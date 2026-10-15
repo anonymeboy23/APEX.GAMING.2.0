@@ -1,0 +1,156 @@
+/* LOGIQUE DU SITE : panier, pages et navigation. Tu n'as normalement pas besoin de modifier ce fichier. */
+
+/* ===== OUTILS ===== */
+const $=id=>document.getElementById(id);
+const price=c=>Math.ceil(c*(1+S.margin)/S.round)*S.round;
+const m=n=>(Number.isInteger(n)?n:n.toFixed(2))+" $";
+let cart={},admin=false;
+try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");admin=localStorage.getItem("apexadm")=="1"}catch(e){}
+const save=()=>{try{localStorage.setItem("apexcart",JSON.stringify(cart))}catch(e){}};
+const escapeHtml=v=>String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const CONFIG_KEY="apexadminconfig";
+function loadAdminConfig(){
+ try{
+  const saved=JSON.parse(localStorage.getItem(CONFIG_KEY)||"null");
+  if(!saved||typeof saved!=="object")return;
+  if(Number.isFinite(saved.margin)&&saved.margin>=0&&saved.margin<=5)S.margin=saved.margin;
+  if(Array.isArray(saved.pay)&&saved.pay.length&&saved.pay.every(p=>Array.isArray(p)&&typeof p[0]=="string"&&typeof p[1]=="string"))S.pay=saved.pay;
+  if(Array.isArray(saved.disabledProducts))P.forEach(p=>p.disabled=saved.disabledProducts.includes(p.id));
+ }catch(e){}
+}
+loadAdminConfig();
+function persistAdminConfig(){
+ try{localStorage.setItem(CONFIG_KEY,JSON.stringify({margin:S.margin,pay:S.pay,disabledProducts:P.filter(p=>p.disabled).map(p=>p.id)}))}
+ catch(e){alert("Impossible d’enregistrer les réglages dans ce navigateur.");}
+}
+function saveAdminSettings(event){
+ event.preventDefault();
+ const form=event.currentTarget,margin=Number(form.elements.margin.value)/100;
+ const rows=[...form.querySelectorAll(".admin-pay-row")];
+ const pay=rows.map(row=>[row.querySelector('[name="payName"]').value.trim(),row.querySelector('[name="payNumber"]').value.trim()]);
+ if(!Number.isFinite(margin)||margin<0||margin>5){alert("La marge doit être comprise entre 0 et 500 %.");return}
+ if(!pay.length||pay.some(p=>!p[0]||!p[1])){alert("Garde au moins un moyen de paiement et complète tous les champs.");return}
+ if(pay.some(p=>p[0].length>40||p[1].length>60)){alert("Les noms sont limités à 40 caractères et les numéros à 60.");return}
+ S.margin=margin;S.pay=pay;
+ P.forEach(p=>p.disabled=!form.querySelector(`[name="product-${p.id}"]`).checked);
+ persistAdminConfig();draw();
+}
+function addPaymentRow(){
+ const list=$("adminPayments"),row=document.createElement("div");
+ row.className="admin-pay-row";
+ row.innerHTML='<label class="f">Moyen<input name="payName" maxlength="40" required></label><label class="f">Numéro / identifiant<input name="payNumber" maxlength="60" required></label><button class="btn l" type="button" aria-label="Supprimer ce moyen de paiement" onclick="this.closest(\'.admin-pay-row\').remove()">Supprimer</button>';
+ list.appendChild(row);
+}
+function exitAdmin(){admin=false;try{localStorage.setItem("apexadm","0")}catch(e){}location.hash="#/";}
+const items=()=>Object.values(cart);
+const count=()=>items().reduce((s,i)=>s+i.q,0);
+const total=()=>items().reduce((s,i)=>s+i.q*i.p,0);
+const style=c=>`style="--c1:${c[0]};--c2:${c[1]}"`;
+const PAGES=[["","Accueil"],["boutique","Boutique"],["commander","Comment commander"],["paiement","Paiement"],["pourquoi","Pourquoi nous"],["apropos","Qui sommes-nous"]];
+$("fl").innerHTML=PAGES.map(p=>`<li><a href="#/${p[0]}">${p[1]}</a></li>`).join("");
+$("fw").href="https://wa.me/"+S.wa;$("fw").textContent="WhatsApp : "+S.phone;
+$("fi").href="https://www.instagram.com/"+S.ig;$("fi").textContent="Instagram : "+S.ig;
+$("fs").href="https://www.snapchat.com/add/"+S.sn;$("fs").textContent="Snapchat : "+S.sn;
+$("bg").onclick=()=>{const o=$("nav").classList.toggle("o");$("bg").setAttribute("aria-expanded",o)};
+
+/* ===== PANIER ===== */
+function add(pi,gi,ci,face,d){
+ const p=P[pi],g=p.g[gi],c=g.list[ci],k=[p.id,c.c,c.n,face].join("|");
+ if(!cart[k])cart[k]={t:p.n+(g.l?" "+g.l:"")+" "+c.n,s:c.s,f:face,p:price(face*c.r),q:0};
+ cart[k].q=Math.max(0,cart[k].q+d);if(!cart[k].q)delete cart[k];
+ save();draw(true);
+}
+function chg(k,d){cart[k].q=Math.max(0,cart[k].q+d);if(!cart[k].q)delete cart[k];save();draw(true)}
+function send(){
+ const n=$("nm").value.trim();
+ const t=["Bonjour Apex Gaming, je voudrais commander :","",...items().map(i=>`• ${i.q} × ${i.t} ${i.f} ${i.s} = ${m(i.q*i.p)}`),"","Total : "+m(total()),"Paiement par : "+$("py").value].concat(n?["Nom : "+n]:[]).join("\n");
+ window.open("https://wa.me/"+S.wa+"?text="+encodeURIComponent(t),"_blank");
+}
+
+/* ===== PAGES ===== */
+let sel={g:0,c:0};
+const head=(t,p,c)=>`<section class="ph" ${c?style(c):""}><div class="w"><h1>${t}</h1><p>${p}</p></div></section>`;
+const gcMini=(c,a,b,n)=>`<div class="gc mini" ${style(c)}><div class="gt"><span>Carte cadeau</span><span>${n}</span></div><div class="gf">${a}<small>${b}</small></div></div>`;
+const tiles=()=>`<div class="tiles">${P.filter(p=>!p.disabled).map(p=>`<a class="tile" href="#/p/${p.id}" ${style(p.c)}><h3>${p.n}</h3><span>${p.d} · dès ${m(price(Math.min(...p.g.flatMap(g=>g.list.map(c=>c.k[0]*c.r)))))}</span></a>`).join("")||"<p>Aucun produit disponible pour le moment.</p>"}</div>`;
+const steps=`<ol class="st"><li><h3>Choisis ta carte</h3><p>Produit, région ou pays, et montant.</p></li><li><h3>Ajoute au panier</h3><p>Le prix en dollars est affiché avant de commander.</p></li><li><h3>Envoie sur WhatsApp</h3><p>Ta commande s'écrit toute seule. Tu n'as qu'à l'envoyer.</p></li><li><h3>Paie et reçois ton code</h3><p>Après confirmation du paiement, on t'envoie le code.</p></li></ol>`;
+
+const R={
+"":()=>`<section class="hero"><div class="w hg"><div><h1>Cartes cadeaux PlayStation, Spotify, Apple Music et plus</h1><p>Choisis ta carte, vois le prix tout de suite, et envoie ta commande sur WhatsApp en un clic.</p><a class="btn" href="#/boutique">Voir la boutique</a> <a class="btn l" href="#/commander">Comment commander</a></div>
+<div class="fan" aria-hidden="true">${gcMini(P[0].g[0].c,10,"$","US")}${gcMini(P[1].c,30,"$","Spotify")}${gcMini(P[3].c,50,"$","Netflix")}</div></div></section>
+<section class="sec"><div class="w"><h2>Nos cartes</h2><p class="ld">Sept marques, chacune avec ses montants et ses prix.</p>${tiles()}</div></section>
+${!P.find(p=>p.id=="psn").disabled?`<section class="sec s"><div class="w"><h2>PlayStation : choisis ta région</h2><p class="ld">Une carte PSN ne marche que sur un compte de la même région.</p>
+<div class="tiles rg"><a class="tile" href="#/p/psn/0" ${style(P[0].g[0].c)}><h3>Amérique</h3><span>États-Unis, Canada</span></a><a class="tile" href="#/p/psn/1" ${style(P[0].g[1].c)}><h3>Europe</h3><span>France, Allemagne, Espagne, Italie, Belgique, Royaume-Uni</span></a></div></div></section>
+`:""}
+<section class="sec"><div class="w"><h2>Comment ça marche</h2><p class="ld">Quatre étapes, sans créer de compte.</p>${steps}<p style="margin-top:22px"><a class="btn d" href="#/commander">Voir le guide</a></p></div></section>
+<section class="sec s"><div class="w"><h2>Paiements acceptés</h2><div class="ch" style="margin:14px 0 22px">${S.pay.map(p=>`<span>${escapeHtml(p[0])}</span>`).join("")}</div><a class="btn d" href="#/paiement">Détails du paiement</a></div></section>`,
+
+boutique:()=>head("Boutique","Choisis une marque pour voir ses cartes et ses prix.")+`<section class="sec"><div class="w">${tiles()}</div></section>`,
+
+p:(id,gk)=>{
+ const pi=P.findIndex(p=>p.id==id&&!p.disabled);if(pi<0)return R.boutique();
+ const p=P[pi],g=p.g[sel.g]||p.g[0],c=g.list[sel.c]||g.list[0],gi=p.g.indexOf(g),ci=g.list.indexOf(c);
+ return head(p.n+(g.l?" : "+g.l:""),p.d+". Les cartes ne fonctionnent que sur un compte de la même région.",g.c||p.c)+`<div class="w">
+ ${p.g.length>1?`<div class="tabs">${p.g.map((x,i)=>`<button class="tab" aria-pressed="${i==gi}" onclick="sel={g:${i},c:0};draw(true)">${x.l}</button>`).join("")}</div>`:""}
+ ${g.list.length>1?`<div class="tabs">${g.list.map((x,i)=>`<button class="tab" aria-pressed="${i==ci}" onclick="sel.c=${i};draw(true)">${x.c} · ${x.n}</button>`).join("")}</div>`:""}
+ <div class="cards">${c.k.map(f=>{const cost=f*c.r,pr=price(cost),k=[p.id,c.c,c.n,f].join("|"),q=cart[k]?cart[k].q:0;
+ return `<article class="gc" ${style(g.c||p.c)}><div class="gt"><span>Carte cadeau</span><span>${c.c}</span></div><div class="gf">${f}<small>${c.s}</small></div><div class="gn">${p.n} · ${c.n}</div>
+ <div class="gb"><div class="gp"><small>Notre prix</small>${m(pr)}</div><div class="q"><button aria-label="Retirer" onclick="add(${pi},${gi},${ci},${f},-1)">−</button><span>${q}</span><button aria-label="Ajouter" onclick="add(${pi},${gi},${ci},${f},1)">+</button></div></div>
+ ${admin?`<div class="ga">Réel ${cost.toFixed(2)} $ · gain ${(pr-cost).toFixed(2)} $</div>`:""}</article>`}).join("")}</div></div>`},
+
+panier:()=>head("Mon panier","Vérifie ta commande, puis envoie-la sur WhatsApp.")+`<div class="w"><div class="cl">${count()?items().length&&Object.entries(cart).map(([k,i])=>`<div class="ln"><span>${i.t} ${i.f} ${i.s}</span><span class="q"><button aria-label="Retirer" onclick="chg('${k}',-1)">−</button><span>${i.q}</span><button aria-label="Ajouter" onclick="chg('${k}',1)">+</button></span><b>${m(i.q*i.p)}</b></div>`).join("")+`<div class="tt"><span>Total</span><span>${m(total())}</span></div>
+ <label class="f">Ton nom<input id="nm" placeholder="Ex : Jean" autocomplete="name"></label><label class="f">Moyen de paiement<select id="py">${S.pay.map(p=>`<option>${escapeHtml(p[0])}</option>`).join("")}</select></label><button class="btn g" onclick="send()">Commander sur WhatsApp</button>`:`<p>Ton panier est vide. <a href="#/boutique"><b>Voir la boutique</b></a></p>`}</div></div>`,
+
+commander:()=>head("Comment commander","De la boutique à ton code, étape par étape.")+`<section class="sec"><div class="w pr"><ol class="st" style="grid-template-columns:1fr">
+<li><h3>Vérifie la région de ton compte</h3><p>Une carte américaine ne marche pas sur un compte européen. Pour PlayStation, choisis Amérique ou Europe, puis ton pays.</p></li>
+<li><h3>Ajoute tes cartes au panier</h3><p>Dans la <a href="#/boutique"><b>boutique</b></a>, utilise + et − sur chaque carte. Tu peux mélanger plusieurs marques.</p></li>
+<li><h3>Ouvre ton panier</h3><p>Entre ton nom, choisis ton moyen de paiement, puis clique sur « Commander sur WhatsApp ».</p></li>
+<li><h3>Envoie le message</h3><p>WhatsApp s'ouvre avec ta commande déjà écrite. Appuie sur envoyer.</p></li>
+<li><h3>Paie le montant</h3><p>On confirme ta commande. Tu paies puis tu envoies la capture. Voir <a href="#/paiement"><b>Paiement</b></a>.</p></li>
+<li><h3>Reçois et utilise ton code</h3><p>Une fois le paiement confirmé, on t'envoie le code. Entre-le dans la boutique de l'application concernée.</p></li></ol></div></section>`,
+
+paiement:()=>head("Paiement","Tous les prix sont en dollars. Tu paies après avoir envoyé ta commande.")+`<section class="sec"><div class="w"><h2>Où envoyer ton paiement</h2><p class="ld">Envoie le montant exact de ta commande avec l'un de ces moyens.</p>
+<div class="pg">${S.pay.map(p=>`<div class="pay"><h3>${escapeHtml(p[0])}</h3><p>Numéro : <b>${escapeHtml(p[1])}</b><br>Nom du compte : <b>Apex Gaming</b></p></div>`).join("")}</div>
+<div class="nt"><b>Avant de payer :</b> attends notre confirmation sur WhatsApp, qui rappelle le montant et le numéro. Vérifie toujours le numéro avant d'envoyer. Ensuite, envoie la capture de ton paiement pour recevoir ton code.</div></div></section>`,
+
+pourquoi:()=>head("Pourquoi Apex Gaming","Ce qui change quand tu commandes chez nous.")+`<section class="sec"><div class="w"><div class="rs">
+<div><h3>Prix affichés d'avance</h3><p>Chaque carte a son prix en dollars. Pas de surprise.</p></div>
+<div><h3>Plusieurs marques, un seul panier</h3><p>PlayStation, Spotify, Apple Music, Netflix, Xbox, Steam et Google Play dans une même commande.</p></div>
+<div><h3>Régions bien séparées</h3><p>PlayStation Amérique et Europe ont chacune leurs pays, pour éviter l'erreur de région.</p></div>
+<div><h3>Commande en un clic</h3><p>Ton panier devient un message WhatsApp prêt à envoyer.</p></div>
+<div><h3>Un vendeur joignable</h3><p>Tu parles directement à Apex Gaming sur WhatsApp, Instagram ou Snapchat.</p></div>
+<div><h3>Paiement au choix</h3><p>Tu utilises le moyen de paiement qui t'arrange.</p></div></div></div></section>`,
+
+apropos:()=>head("Qui sommes-nous","Apex Gaming, boutique de cartes cadeaux numériques.")+`<section class="sec"><div class="w pr"><h2 style="margin-top:0">Notre activité</h2><p>Apex Gaming vend des cartes cadeaux pour recharger tes comptes PlayStation, Xbox, Steam, Google Play, Apple, Spotify et Netflix.</p>
+<h2>Notre façon de travailler</h2><p>Le site affiche les prix. La commande se termine par une vraie conversation sur WhatsApp : on confirme, tu paies, on t'envoie ton code.</p>
+<h2>Nous contacter</h2><p>WhatsApp : <a href="https://wa.me/${S.wa}" target="_blank" rel="noopener"><b>${S.phone}</b></a><br>Instagram : <b>${S.ig}</b><br>Snapchat : <b>${S.sn}</b></p></div></section>`,
+
+admin:()=>{
+ admin=true;try{localStorage.setItem("apexadm","1")}catch(e){}
+ return head("Administration","Gère les produits, les prix et les moyens de paiement de cette boutique.")+`<section class="sec"><div class="w">
+ <div class="admin-summary"><div><b>${P.filter(p=>!p.disabled).length}</b><span>produits actifs</span></div><div><b>${Math.round(S.margin*100)} %</b><span>marge appliquée</span></div><div><b>${S.pay.length}</b><span>moyens de paiement</span></div></div>
+ <form id="adminSettings" class="admin-form" onsubmit="saveAdminSettings(event)">
+ <section class="admin-section"><h2>Tarification</h2><p class="ld">La marge est appliquée au coût de chaque carte avant l’arrondi.</p><label class="f">Marge (%)<input name="margin" type="number" min="0" max="500" step="1" value="${Math.round(S.margin*100)}" required></label></section>
+ <section class="admin-section"><h2>Produits</h2><p class="ld">Décoche un produit pour le masquer dans la boutique.</p><div class="admin-products">${P.map(p=>`<label class="admin-product"><input type="checkbox" name="product-${p.id}" ${p.disabled?"":"checked"}><span><b>${p.n}</b><small>${p.d}</small></span></label>`).join("")}</div></section>
+ <section class="admin-section"><h2>Moyens de paiement</h2><p class="ld">Ces informations s’affichent sur la page Paiement et dans le formulaire de commande.</p><div id="adminPayments">${S.pay.map(p=>`<div class="admin-pay-row"><label class="f">Moyen<input name="payName" maxlength="40" value="${escapeHtml(p[0])}" required></label><label class="f">Numéro / identifiant<input name="payNumber" maxlength="60" value="${escapeHtml(p[1])}" required></label><button class="btn l" type="button" aria-label="Supprimer ce moyen de paiement" onclick="this.closest('.admin-pay-row').remove()">Supprimer</button></div>`).join("")}</div><button class="btn l" type="button" onclick="addPaymentRow()">+ Ajouter un moyen</button></section>
+ <div class="admin-actions"><button class="btn d" type="submit">Enregistrer les réglages</button><button class="btn l" type="button" onclick="exitAdmin()">Quitter l’administration</button></div>
+ </form><p class="admin-note">Les modifications sont enregistrées uniquement dans le stockage local de ce navigateur. Elles ne sont pas partagées avec les visiteurs ni synchronisées avec d’autres appareils.</p>
+ </div></section>`
+}
+};
+
+/* ===== AFFICHAGE ET NAVIGATION ===== */
+function draw(keep){
+ const y=scrollY,h=location.hash.replace(/^#\/?/,"").split("/"),a=h[0];
+ $("main").innerHTML=(R[a]||R[""])(h[1],h[2]);
+ const n=count();
+ $("nav").innerHTML=PAGES.map(p=>`<a href="#/${p[0]}" ${p[0]==a||(a=="p"&&p[0]=="boutique")?'class="on"':""}>${p[1]}</a>`).join("")+`<a href="#/panier" class="${a=="panier"?"on":""}">Panier (${n})</a>`+(admin?`<a href="#/admin" class="${a=="admin"?"on":""}">Administration</a>`:"");
+ const old=document.getElementById("cb");if(old)old.remove();
+ if(n&&a!="panier"){const b=document.createElement("div");b.className="bar";b.id="cb";b.innerHTML=`<span><b>${n}</b> article${n>1?"s":""} · <b>${m(total())}</b></span><a class="btn d" href="#/panier">Voir le panier</a>`;document.body.appendChild(b)}
+ if(keep)scrollTo(0,y);
+}
+addEventListener("hashchange",()=>{
+ const h=location.hash.replace(/^#\/?/,"").split("/");
+ sel={g:h[0]=="p"&&h[2]!=null?+h[2]||0:0,c:0};
+ $("nav").classList.remove("o");draw();scrollTo(0,0);
+});
+draw();
