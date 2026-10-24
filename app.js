@@ -9,6 +9,7 @@ const supabaseClient=window.apexSupabase;
 let currentUser=null,accountOrders=[],accountMode="login",accountReady=false,accountNotice="",accountRole=null,adminAccounts=[],adminAccountsLoaded=false,adminAccountsLoading=false,adminAccountsError="";
 try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");orders=JSON.parse(localStorage.getItem("apexorders")||"[]");reviews=JSON.parse(localStorage.getItem("apexreviews")||"[]");inventory=JSON.parse(localStorage.getItem("apexinventory")||"{}");promo=JSON.parse(localStorage.getItem("apexpromo")||'{"code":"","percent":0,"enabled":false}');profile=JSON.parse(localStorage.getItem("apexprofile")||'{"name":"","phone":"","email":""}');recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
 const isAdmin=()=>Boolean(currentUser&&accountReady&&accountRole==="admin");
+let adminOrders=[],adminReviews=[],adminDataLoaded=false,adminDataLoading=false,adminDataErrors=[],adminConfigLoaded=false;
 const save=()=>{try{localStorage.setItem("apexcart",JSON.stringify(cart))}catch(e){}};
 const saveFavorites=()=>{try{localStorage.setItem("apexfavorites",JSON.stringify(favorites))}catch(e){}};
 const saveRecent=()=>{try{localStorage.setItem("apexrecent",JSON.stringify(recentProducts))}catch(e){}};
@@ -38,6 +39,30 @@ function reportAccountError(error,action){
 function orderItemName(item){
  const product=P.find(p=>p.id===item.product_id);
  return `${product?.n||item.product_id}${item.region?` · ${item.region}`:""}`;
+}
+function applyStoreConfig(config){
+ if(!config||typeof config!=="object")throw new Error("La configuration centrale de la boutique est vide.");
+ if(Number.isFinite(Number(config.margin))&&Number(config.margin)>=0&&Number(config.margin)<=5)S.margin=Number(config.margin);
+ if(Number.isFinite(Number(config.round))&&Number(config.round)>0)S.round=Number(config.round);
+ if(Array.isArray(config.pay)&&config.pay.length&&config.pay.every(method=>Array.isArray(method)&&typeof method[0]==="string"&&typeof method[1]==="string"))S.pay=config.pay;
+ if(config.promo&&typeof config.promo==="object")promo={code:String(config.promo.code||""),percent:Number(config.promo.percent)||0,enabled:Boolean(config.promo.enabled)};
+ if(Array.isArray(config.products)){
+  config.products.forEach(item=>{
+   const product=P.find(candidate=>candidate.id===item.id);
+   if(!product)return;
+   product.disabled=item.active!==true;
+   inventory[product.id]=Math.max(0,Number(item.quantity)||0);
+  });
+ }
+}
+async function loadStorefrontConfig(){
+ if(!supabaseClient)return;
+ const {data,error}=await supabaseClient.rpc("get_storefront_config");
+ if(error){console.error("Chargement de la boutique impossible",error);toast("Les réglages partagés n’ont pas pu être chargés.");return}
+ if(!adminConfigLoaded){
+  try{applyStoreConfig(data);draw(true)}
+  catch(configError){console.error("Configuration de la boutique invalide",configError);toast("La configuration partagée de la boutique est invalide.")}
+ }
 }
 async function loadAccountData(){
  if(!supabaseClient||!currentUser)return false;
