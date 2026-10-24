@@ -10,7 +10,7 @@ Set-Location $root
 $trackedFiles = @(
   "app.js", "data.js", "index.html", "style.css", "_headers", "wrangler.toml", "auto-publish.ps1",
   ".github/workflows/deploy-cloudflare.yml", "schema.sql", "docs/backend-architecture.md",
-  "functions/api/health.js", "functions/api/orders.js"
+  "functions/api/health.js", "functions/api/orders.js", "functions/api/catalog.js", "seed.sql"
 )
 
 function Get-Snapshot {
