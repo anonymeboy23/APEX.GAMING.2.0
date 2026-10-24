@@ -1,0 +1,13 @@
+{
+  "name": "Apex Gaming",
+  "short_name": "Apex Gaming",
+  "description": "Cartes cadeaux numériques PlayStation, Spotify, Apple Music et plus.",
+  "lang": "fr",
+  "start_url": "./#/",
+  "display": "standalone",
+  "background_color": "#f3f6ff",
+  "theme_color": "#1233b8",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

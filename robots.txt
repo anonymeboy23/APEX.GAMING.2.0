@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+# Les pages de profil et d'administration ne sont pas destinées à l'indexation.
+Disallow: /#/profil
+Disallow: /#/admin
