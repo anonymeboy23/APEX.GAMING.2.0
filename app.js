@@ -155,7 +155,73 @@ async function addAdminAccount(event){
  if(error){console.error("Ajout de l’administrateur impossible",error);toast(`Ajout impossible : ${error?.message||"erreur Supabase"}`);return}
  form.reset();adminAccountsLoaded=false;
  toast("Accès administrateur accordé.");
- await loadAdminAccounts();
+ adminDataLoaded=false;
+ await loadAdminData();
+}
+function mapStoredOrder(order){
+ return {
+  id:order.id,status:order.status,total:Number(order.total),createdAt:order.created_at,
+  name:order.customer_name,phone:order.phone,email:order.email,note:order.note,
+  items:(order.order_items||[]).map(item=>({
+   productId:item.product_id,name:orderItemName(item),region:item.region,
+   face:Number(item.face_value),symbol:({US:"$",CA:"CA$",FR:"€",DE:"€",ES:"€",IT:"€",BE:"€",GB:"£"})[item.region]||"$",
+   quantity:item.quantity,price:Number(item.unit_price)
+  }))
+ };
+}
+async function loadAdminData(){
+ if(!isAdmin()||adminDataLoading)return;
+ adminDataLoading=true;adminDataLoaded=false;adminDataErrors=[];draw(true);
+ const results=await Promise.all([
+  supabaseClient.rpc("get_admin_store_config"),
+  supabaseClient.from("orders").select("id,status,total,created_at,customer_name,phone,email,note,order_items(product_id,region,face_value,quantity,unit_price)").order("created_at",{ascending:false}).limit(200),
+  supabaseClient.from("reviews").select("id,customer_name,rating,message,approved,created_at").order("created_at",{ascending:false}).limit(200),
+  supabaseClient.rpc("list_admin_accounts")
+ ]);
+ const [configResult,ordersResult,reviewsResult,adminsResult]=results;
+ if(configResult.error)adminDataErrors.push(`Réglages : ${configResult.error.message}`);
+ else{
+  try{applyStoreConfig(configResult.data);adminConfigLoaded=true}
+  catch(error){adminDataErrors.push(`Réglages : ${error.message}`)}
+ }
+ if(ordersResult.error)adminDataErrors.push(`Commandes : ${ordersResult.error.message}`);
+ else adminOrders=ordersResult.data.map(mapStoredOrder);
+ if(reviewsResult.error)adminDataErrors.push(`Avis : ${reviewsResult.error.message}`);
+ else adminReviews=reviewsResult.data.map(review=>({
+  id:review.id,name:review.customer_name,rating:review.rating,message:review.message,
+  approved:review.approved,createdAt:review.created_at
+ }));
+ if(adminsResult.error)adminDataErrors.push(`Administrateurs : ${adminsResult.error.message}`);
+ else adminAccounts=adminsResult.data||[];
+ adminAccountsError=adminsResult.error?.message||"";
+ adminAccountsLoaded=!adminsResult.error;
+ adminDataLoading=false;adminDataLoaded=true;
+ if(location.hash.replace(/^#\/?/,"").split("/")[0]==="admin")draw(true);
+}
+async function saveAdminSettings(event){
+ event.preventDefault();
+ if(!isAdmin()||!adminConfigLoaded){toast("Les réglages Supabase ne sont pas chargés. Réessaie avant d’enregistrer.");return}
+ const form=event.currentTarget,margin=Number(form.elements.margin.value)/100;
+ const rows=[...form.querySelectorAll(".admin-pay-row")];
+ const pay=rows.map(row=>[row.querySelector('[name="payName"]').value.trim(),row.querySelector('[name="payNumber"]').value.trim()]);
+ const promoCode=form.elements.promoCode.value.trim().toUpperCase(),promoPercent=Number(form.elements.promoPercent.value)||0;
+ if(!Number.isFinite(margin)||margin<0||margin>5){toast("La marge doit être comprise entre 0 et 500 %.");return}
+ if(!pay.length||pay.some(method=>!method[0]||!method[1])){toast("Garde au moins un moyen de paiement et complète tous les champs.");return}
+ if(pay.some(method=>method[0].length>40||method[1].length>60)){toast("Les noms sont limités à 40 caractères et les numéros à 60.");return}
+ if(promoPercent<0||promoPercent>90){toast("La promotion doit être comprise entre 0 et 90 %.");return}
+ const products=P.map(product=>({
+  id:product.id,
+  active:form.querySelector(`[name="product-${product.id}"]`).checked,
+  quantity:Math.max(0,Math.min(99999,Math.floor(Number(form.querySelector(`[name="stock-${product.id}"]`).value)||0)))
+ }));
+ const button=form.querySelector('button[type="submit"]');button.disabled=true;
+ const {data,error}=await supabaseClient.rpc("save_admin_store_config",{p_config:{
+  margin,round:S.round,pay,promo:{code:promoCode,percent:promoPercent},products
+ }});
+ button.disabled=false;
+ if(error){console.error("Enregistrement des réglages centralisés impossible",error);toast(`Enregistrement impossible : ${error.message}`);return}
+ try{applyStoreConfig(data);adminConfigLoaded=true;toast("Réglages enregistrés dans Supabase.");draw(true)}
+ catch(configError){console.error("Réponse de configuration invalide",configError);toast("Supabase a enregistré les réglages, mais leur réponse est invalide. Recharge la page.")}
 }
 function authMessage(error){
  const messages={
