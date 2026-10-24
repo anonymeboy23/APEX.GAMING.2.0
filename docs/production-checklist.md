@@ -26,7 +26,7 @@ Tester ensuite :
 - l'inscription par e-mail, sa confirmation et la réinitialisation de mot de passe fonctionnent sur le domaine HTTPS ;
 - un compte ne voit que son propre profil, ses favoris et ses commandes Supabase ;
 - un admin peut modifier un stock, un réglage et le statut d'une commande, puis retrouve ces changements depuis un autre navigateur ;
-- une commande ne part vers WhatsApp qu'après son enregistrement Supabase ; le stock diminue et une commande au-delà du stock disponible est refusée ;
+- une commande ne part vers WhatsApp qu'après son enregistrement Supabase ; le stock diminue, une commande au-delà du stock disponible est refusée, et une annulation restitue le stock ;
 - le workflow GitHub valide le projet avant le déploiement.
 
 ## 4. Avant ouverture au public

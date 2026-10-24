@@ -137,6 +137,37 @@ drop trigger if exists orders_updated_at on public.orders;
 create trigger orders_updated_at before update on public.orders
 for each row execute procedure public.touch_updated_at();
 
+create or replace function public.restore_cancelled_order_stock()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if old.status = 'Annulée' and new.status <> old.status then
+    raise exception 'A cancelled order cannot be reopened';
+  end if;
+
+  if new.status = 'Annulée' and old.status <> new.status then
+    update public.inventory i
+      set quantity = i.quantity + cancelled.quantity, updated_at = now()
+      from (
+        select product_id, sum(quantity)::integer as quantity
+        from public.order_items
+        where order_id = new.id
+        group by product_id
+      ) cancelled
+      where i.product_id = cancelled.product_id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists orders_restore_cancelled_stock on public.orders;
+create trigger orders_restore_cancelled_stock
+  after update of status on public.orders
+  for each row when (old.status is distinct from new.status)
+  execute procedure public.restore_cancelled_order_stock();
+
 create or replace function public.is_admin()
 returns boolean
 language sql
@@ -540,7 +571,7 @@ begin
        or jsonb_typeof(v_item->'quantity') <> 'number'
        or jsonb_typeof(v_item->'unitPrice') <> 'number'
        or (v_item->>'quantity')::numeric <> trunc((v_item->>'quantity')::numeric)
-       or (v_item->>'quantity')::integer not between 1 and 100
+       or (v_item->>'quantity')::integer not between 1 and 99999
        or (v_item->>'faceValue')::numeric not between 0.01 and 1000000
        or (v_item->>'unitPrice')::numeric not between 0.01 and 1000000
        or length(v_item->>'productId') not between 1 and 40

@@ -26,6 +26,7 @@ for (const requirement of [
   "create or replace function public.create_customer_order(",
   "and i.quantity >= v_quantity",
   "Product unavailable or out of stock",
+  "create or replace function public.restore_cancelled_order_stock()",
   "Order total is outside the allowed discount range"
 ]) {
   if (!supabaseSchema.includes(requirement)) {
