@@ -20,10 +20,11 @@ La clé publique Supabase est chargée par `supabase-config.js`. Elle peut être
 
 ## Activation des comptes Supabase
 
-1. Dans Supabase > SQL Editor, exécuter le fichier `supabase.sql` à jour. Il ajoute les favoris et la procédure transactionnelle de sauvegarde des commandes, et protège le rôle des profils.
+1. Dans Supabase > SQL Editor, exécuter le fichier `supabase.sql` à jour. Il ajoute les favoris, la procédure de sauvegarde des commandes, protège les rôles et fournit les fonctions sécurisées de liste/attribution des administrateurs.
 2. Dans Authentication > URL Configuration, définir l'URL réelle du site comme Site URL et l'ajouter aux Redirect URLs.
 3. Vérifier que le fournisseur e-mail est activé, puis tester inscription, confirmation, connexion et réinitialisation du mot de passe.
 4. Créer un compte de test et vérifier que son profil, ses favoris et ses commandes restent privés à ce compte.
+5. Depuis l'espace admin, promouvoir uniquement l'adresse e-mail d'une personne qui a déjà créé un compte. Les fonctions Supabase vérifient le rôle de l'appelant ; aucune clé `service_role` n'est utilisée dans le navigateur.
 
 ## Activation des API Cloudflare D1
 
