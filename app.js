@@ -4,20 +4,16 @@
 const $=id=>document.getElementById(id);
 const price=c=>Math.ceil(c*(1+S.margin)/S.round)*S.round;
 const m=n=>(Number.isInteger(n)?n:n.toFixed(2))+" $";
-let cart={},favorites=[],orders=[],reviews=[],inventory={},promo={code:"",percent:0,enabled:false},profile={name:"",phone:"",email:""},orderLookup=null,appliedPromo="",shopQuery="",shopSort="featured",shopRegion="all",recentProducts=[],theme="";
+let cart={},favorites=[],reviews=[],inventory={},promo={code:"",percent:0,enabled:false},profile={name:"",phone:"",email:""},orderLookup=null,appliedPromo="",shopQuery="",shopSort="featured",shopRegion="all",recentProducts=[],theme="";
 const supabaseClient=window.apexSupabase;
 let currentUser=null,accountOrders=[],accountMode="login",accountReady=false,accountNotice="",accountRole=null,adminAccounts=[],adminAccountsLoaded=false,adminAccountsError="";
-try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");orders=JSON.parse(localStorage.getItem("apexorders")||"[]");reviews=JSON.parse(localStorage.getItem("apexreviews")||"[]");inventory=JSON.parse(localStorage.getItem("apexinventory")||"{}");promo=JSON.parse(localStorage.getItem("apexpromo")||'{"code":"","percent":0,"enabled":false}');profile=JSON.parse(localStorage.getItem("apexprofile")||'{"name":"","phone":"","email":""}');recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
+try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");profile=JSON.parse(localStorage.getItem("apexprofile")||'{"name":"","phone":"","email":""}');recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
 const isAdmin=()=>Boolean(currentUser&&accountReady&&accountRole==="admin");
 let adminOrders=[],adminReviews=[],adminDataLoaded=false,adminDataLoading=false,adminDataErrors=[],adminConfigLoaded=false,adminDataRequest=0;
 const save=()=>{try{localStorage.setItem("apexcart",JSON.stringify(cart))}catch(e){}};
 const saveFavorites=()=>{try{localStorage.setItem("apexfavorites",JSON.stringify(favorites))}catch(e){}};
 const saveRecent=()=>{try{localStorage.setItem("apexrecent",JSON.stringify(recentProducts))}catch(e){}};
-const saveOrders=()=>{try{localStorage.setItem("apexorders",JSON.stringify(orders))}catch(e){}};
-const saveInventory=()=>{try{localStorage.setItem("apexinventory",JSON.stringify(inventory))}catch(e){}};
-const savePromo=()=>{try{localStorage.setItem("apexpromo",JSON.stringify(promo))}catch(e){}};
 const saveProfile=()=>{try{localStorage.setItem("apexprofile",JSON.stringify(profile))}catch(e){}};
-const saveReviews=()=>{try{localStorage.setItem("apexreviews",JSON.stringify(reviews))}catch(e){}};
 const escapeHtml=v=>String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const isFavorite=id=>favorites.includes(id);
 async function toggleFavorite(id){
@@ -57,10 +53,18 @@ function applyStoreConfig(config){
 }
 async function loadStorefrontConfig(){
  if(!supabaseClient)return;
- const [{data,error},{data:reviewData,error:reviewError}]=await Promise.all([
-  supabaseClient.rpc("get_storefront_config"),
-  supabaseClient.from("reviews").select("id,customer_name,rating,message,approved,created_at").eq("approved",true).order("created_at",{ascending:false}).limit(100)
- ]);
+ let configResult,reviewResult;
+ try{
+  [configResult,reviewResult]=await Promise.all([
+   supabaseClient.rpc("get_storefront_config"),
+   supabaseClient.from("reviews").select("id,customer_name,rating,message,approved,created_at").eq("approved",true).order("created_at",{ascending:false}).limit(100)
+  ]);
+ }catch(error){
+  console.error("Chargement de la boutique impossible",error);
+  toast("La configuration centrale de la boutique est indisponible.");
+  return;
+ }
+ const {data,error}=configResult,{data:reviewData,error:reviewError}=reviewResult;
  if(error){console.error("Chargement de la boutique impossible",error);toast("Les réglages partagés n’ont pas pu être chargés.");return}
  if(!adminConfigLoaded){
   try{applyStoreConfig(data);draw(true)}
@@ -179,6 +183,7 @@ async function loadAdminData(){
   if(location.hash.replace(/^#\/?/,"").split("/")[0]==="admin")draw(true);
   return;
  }
+ if(requestId!==adminDataRequest||currentUser?.id!==userId)return;
  if(configResult.error)adminDataErrors.push(`Réglages : ${configResult.error.message}`);
  else{
   try{applyStoreConfig(configResult.data);adminConfigLoaded=true}
@@ -215,9 +220,16 @@ async function saveAdminSettings(event){
   quantity:Math.max(0,Math.min(99999,Math.floor(Number(form.querySelector(`[name="stock-${product.id}"]`).value)||0)))
  }));
  const button=form.querySelector('button[type="submit"]');button.disabled=true;
- const {data,error}=await supabaseClient.rpc("save_admin_store_config",{p_config:{
-  margin,round:S.round,pay,promo:{code:promoCode,percent:promoPercent},products
- }});
+ let data,error;
+ try{
+  ({data,error}=await supabaseClient.rpc("save_admin_store_config",{p_config:{
+   margin,round:S.round,pay,promo:{code:promoCode,percent:promoPercent},products
+  }}));
+ }catch(requestError){
+  button.disabled=false;
+  reportAccountError(requestError,"Enregistrement des réglages centralisés impossible");
+  return;
+ }
  button.disabled=false;
  if(error){console.error("Enregistrement des réglages centralisés impossible",error);toast(`Enregistrement impossible : ${error.message}`);return}
  try{applyStoreConfig(data);adminConfigLoaded=true;toast("Réglages enregistrés dans Supabase.");draw(true)}
@@ -278,7 +290,7 @@ function toast(message){const el=$("toast");if(!el)return;el.textContent=message
 function toggleTheme(){theme=theme=="dark"?"light":theme=="light"?"":"dark";try{localStorage.setItem("apextheme",theme)}catch(e){};applyTheme()}
 function applyTheme(){document.documentElement.dataset.theme=theme;if($("themeToggle"))$("themeToggle").textContent=theme=="dark"?"☀":theme=="light"?"☾":"◐"}
 function rememberProduct(id){recentProducts=[id,...recentProducts.filter(x=>x!==id)].slice(0,4);saveRecent()}
-const stockFor=id=>Number.isFinite(Number(inventory[id]))?Math.max(0,Number(inventory[id])):100;
+const stockFor=id=>Number.isFinite(Number(inventory[id]))?Math.max(0,Number(inventory[id])):0;
 const discount=()=>appliedPromo&&promo.enabled&&promo.code&&promo.percent>0?Math.min(total(),total()*promo.percent/100):0;
 const finalTotal=()=>total()-discount();
 function applyPromo(){const input=$("promoCode"),value=input?input.value.trim().toUpperCase():"";if(!promo.enabled||!promo.code||value!==promo.code.toUpperCase()){toast("Code promotion invalide");return}appliedPromo=value;toast("Promotion appliquée");draw(true)}
@@ -358,7 +370,9 @@ const PRODUCT_INFO={
 const ORDER_STATUSES=["En attente de confirmation","Confirmée","En préparation","Livrée","Annulée"];
 async function updateOrderStatus(id,status){
  if(!isAdmin()||!ORDER_STATUSES.includes(status)){toast("Statut invalide ou accès administrateur requis.");return}
- const {error}=await supabaseClient.from("orders").update({status}).eq("id",id);
+ let error;
+ try{({error}=await supabaseClient.from("orders").update({status}).eq("id",id))}
+ catch(requestError){reportAccountError(requestError,"Mise à jour de la commande impossible");return}
  if(error){reportAccountError(error,"Mise à jour de la commande impossible");return}
  const order=adminOrders.find(item=>item.id===id);
  if(order)order.status=status;
@@ -388,7 +402,6 @@ function send(){
  profile={name:n,phone,email};saveProfile();
  const order="AG-"+Date.now().toString(36).toUpperCase();
  const orderItems=items().map(i=>({productId:i.productId||"",region:i.region||"",name:i.t,face:i.f,symbol:i.s,quantity:i.q,price:i.p}));
- orders.unshift({id:order,createdAt:new Date().toISOString(),status:"En attente de confirmation",name:n,phone,email,note,total:finalTotal(),discount:discount(),payment:$("py").value,items:orderItems});orders=orders.slice(0,20);saveOrders();
  const t=["Bonjour Apex Gaming, je voudrais commander :","","Référence : "+order,...items().map(i=>`- ${i.q} x ${i.t} ${i.f} ${i.s} = ${m(i.q*i.p)}`),"",discount()?"Promotion : - "+m(discount()):"","Total : "+m(finalTotal()),"Paiement par : "+$("py").value,"Nom : "+n,"WhatsApp : "+phone].concat(email?["Email : "+email]:[],note?["Note : "+note]:[]).join("\n");
  const payload={id:order,name:n,phone,email,note,payment:$("py").value,total:finalTotal(),items:orderItems.map(i=>({productId:i.productId,region:i.region,faceValue:Number(i.face),quantity:i.quantity,unitPrice:i.price}))};
  const whatsappWindow=window.open("https://wa.me/"+S.wa+"?text="+encodeURIComponent(t),"_blank");
@@ -396,19 +409,21 @@ function send(){
 }
 async function syncOrder(payload){
  if(supabaseClient){
-  if(currentUser){
-   const {error:profileError}=await supabaseClient.from("profiles").update({name:payload.name,phone:payload.phone}).eq("id",currentUser.id);
-   if(profileError)console.error("Profil non synchronisé",profileError);
-  }
-  const {error}=await supabaseClient.rpc("create_customer_order",{
-   p_id:payload.id,p_customer_name:payload.name,p_phone:payload.phone,p_email:payload.email||null,
-   p_note:payload.note||null,p_total:payload.total,p_payment_method:payload.payment,
-   p_items:payload.items.map(item=>({productId:item.productId,region:item.region,faceValue:item.faceValue,quantity:item.quantity,unitPrice:item.unitPrice}))
-  });
-  if(error){reportAccountError(error,"WhatsApp est prêt, mais la commande n'a pas été synchronisée");return}
-  if(currentUser)await loadAccountData();
-  if(isAdmin())adminDataLoaded=false;
-  toast("Commande enregistrée dans Supabase.");
+  try{
+   const {error}=await supabaseClient.rpc("create_customer_order",{
+    p_id:payload.id,p_customer_name:payload.name,p_phone:payload.phone,p_email:payload.email||null,
+    p_note:payload.note||null,p_total:payload.total,p_payment_method:payload.payment,
+    p_items:payload.items.map(item=>({productId:item.productId,region:item.region,faceValue:item.faceValue,quantity:item.quantity,unitPrice:item.unitPrice}))
+   });
+   if(error){reportAccountError(error,"WhatsApp est prêt, mais la commande n'a pas été synchronisée");return}
+   if(currentUser){
+    const {error:profileError}=await supabaseClient.from("profiles").update({name:payload.name,phone:payload.phone}).eq("id",currentUser.id);
+    if(profileError)console.error("Profil non synchronisé",profileError);
+    await loadAccountData();
+   }
+   if(isAdmin())adminDataLoaded=false;
+   toast("Commande enregistrée dans Supabase.");
+  }catch(error){reportAccountError(error,"WhatsApp est prêt, mais la commande n'a pas été synchronisée")}
   return;
  }
  toast("WhatsApp est prêt, mais la commande n’a pas été enregistrée : Supabase n’est pas configuré.");
@@ -470,8 +485,8 @@ ${!P.find(p=>p.id=="psn").disabled?`<section class="sec s"><div class="w"><h2>Pl
  faq:()=>head("Questions fréquentes","Les réponses essentielles avant de commander.")+`<section class="sec"><div class="w faq"><details open><summary>Combien de temps faut-il pour recevoir le code ?</summary><p>La commande est traitée après confirmation du paiement. Le délai exact est confirmé sur WhatsApp.</p></details><details><summary>Une carte PlayStation fonctionne-t-elle partout ?</summary><p>Non. La région et parfois le pays doivent correspondre à ton compte. Vérifie toujours la région avant de payer.</p></details><details><summary>Puis-je mélanger plusieurs marques ?</summary><p>Oui. Ajoute plusieurs cartes au même panier puis envoie une seule commande WhatsApp.</p></details><details><summary>Puis-je annuler une commande ?</summary><p>Contacte-nous immédiatement sur WhatsApp avant la livraison du code.</p></details><details><summary>Pourquoi le paiement se fait-il sur WhatsApp ?</summary><p>Nous confirmons manuellement la disponibilité, le montant et le moyen de paiement avant l'envoi du code.</p></details></div></section>`,
  avis:()=>{const visibleReviews=reviews.filter(r=>r.approved!==false);return head("Avis clients","Partage ton expérience avec la communauté Apex Gaming.")+`<section class="sec"><div class="w"><div class="review-grid">${visibleReviews.length?visibleReviews.map(r=>`<article class="review"><div class="stars">${"★".repeat(r.rating)}${"☆".repeat(5-r.rating)}</div><p>“${escapeHtml(r.message)}”</p><b>${escapeHtml(r.name)}</b></article>`).join(""):`<div class="empty"><h2>Pas encore d'avis publiés</h2><p>Sois le premier à partager ton expérience.</p></div>`}</div><div class="review-form-box"><h2>Écrire un avis</h2><form class="review-form" onsubmit="submitReview(event)"><label class="f">Ton nom<input name="reviewName" maxlength="50" required></label><label class="f">Note<select name="reviewRating"><option value="5">5 étoiles</option><option value="4">4 étoiles</option><option value="3">3 étoiles</option><option value="2">2 étoiles</option><option value="1">1 étoile</option></select></label><label class="f">Ton message<textarea name="reviewMessage" rows="4" maxlength="500" required></textarea></label><button class="btn d" type="submit">Publier mon avis</button></form><p class="admin-note">Les avis sont vérifiés avant publication.</p></div></div></section>`},
  commandes:()=>{
-  const history=currentUser?accountOrders:orders;
-  return head("Mes commandes",currentUser?"Retrouve ici les commandes associées à ton compte.":"Connecte-toi pour synchroniser tes commandes. Le suivi invité reste disponible par référence.")+`<section class="sec"><div class="w">${currentUser?"":`<div class="lookup-box"><h2>Suivre une commande invitée</h2><p class="ld">Entre la référence reçue et le numéro utilisé sur WhatsApp.</p><div class="checkout-grid"><label class="f">Référence<input id="lookupId" placeholder="AG-..." value="${orderLookup?escapeHtml(orderLookup.id):""}"></label><label class="f">Numéro WhatsApp<input id="lookupPhone" placeholder="0973..." value="${escapeHtml(profile.phone)}"></label></div><button class="btn d" type="button" onclick="lookupOrder()">Vérifier le statut</button>${orderLookup?`<div class="lookup-result"><b>${escapeHtml(orderLookup.id)}</b><span>${escapeHtml(orderLookup.status)} · ${m(orderLookup.total)}</span></div>`:""}<p class="secure-note"><a href="#/compte">Créer un compte ou se connecter</a> pour retrouver les prochaines commandes ici.</p></div>`}${history.length?`<div class="orders">${history.map(renderOrderCard).join("")}</div>`:`<div class="empty"><h2>${currentUser?"Aucune commande liée à ce compte":"Aucune commande sur cet appareil"}</h2><p>${currentUser?"Tes prochaines commandes apparaîtront ici après leur envoi sur WhatsApp.":"Connecte-toi pour synchroniser tes prochaines commandes entre appareils."}</p><a class="btn d" href="#/boutique">Voir la boutique</a>${currentUser?"":` <a class="btn l" href="#/compte">Connexion / inscription</a>`}</div>`}</div></section>`;
+  const history=currentUser?accountOrders:[];
+  return head("Mes commandes",currentUser?"Retrouve ici les commandes associées à ton compte.":"Connecte-toi pour synchroniser tes commandes. Le suivi invité reste disponible par référence.")+`<section class="sec"><div class="w">${currentUser?"":`<div class="lookup-box"><h2>Suivre une commande invitée</h2><p class="ld">Entre la référence reçue et le numéro utilisé sur WhatsApp.</p><div class="checkout-grid"><label class="f">Référence<input id="lookupId" placeholder="AG-..." value="${orderLookup?escapeHtml(orderLookup.id):""}"></label><label class="f">Numéro WhatsApp<input id="lookupPhone" placeholder="0973..." value="${escapeHtml(profile.phone)}"></label></div><button class="btn d" type="button" onclick="lookupOrder()">Vérifier le statut</button>${orderLookup?`<div class="lookup-result"><b>${escapeHtml(orderLookup.id)}</b><span>${escapeHtml(orderLookup.status)} · ${m(orderLookup.total)}</span></div>`:""}<p class="secure-note"><a href="#/compte">Créer un compte ou se connecter</a> pour retrouver les prochaines commandes ici.</p></div>`}${history.length?`<div class="orders">${history.map(renderOrderCard).join("")}</div>`:`<div class="empty"><h2>${currentUser?"Aucune commande liée à ce compte":"Consulte le suivi de ta commande ici"}</h2><p>${currentUser?"Tes prochaines commandes apparaîtront ici après leur envoi sur WhatsApp.":"Les commandes invitées sont enregistrées dans Supabase. Entre la référence et le numéro WhatsApp pour consulter le statut."}</p><a class="btn d" href="#/boutique">Voir la boutique</a>${currentUser?"":` <a class="btn l" href="#/compte">Connexion / inscription</a>`}</div>`}</div></section>`;
  },
  profil:()=>head("Mon profil","Enregistre tes coordonnées pour commander plus rapidement.")+`<section class="sec"><div class="w profile-box">${currentUser?`<p class="account-email">Adresse du compte : <b>${escapeHtml(currentUser.email||"")}</b></p>`:`<p class="secure-note">Enregistre ces coordonnées dans ce navigateur ou <a href="#/compte">crée un compte</a> pour les synchroniser.</p>`}<form class="profile-form" onsubmit="saveCustomerProfile(event)"><label class="f">Nom complet<input name="name" value="${escapeHtml(profile.name)}" autocomplete="name" required></label><label class="f">Numéro WhatsApp<input name="phone" value="${escapeHtml(profile.phone)}" autocomplete="tel" required></label>${currentUser?"":`<label class="f">E-mail (facultatif)<input name="email" type="email" value="${escapeHtml(profile.email)}" autocomplete="email"></label>`}<button class="btn d" type="submit">Enregistrer mon profil</button></form>${currentUser?`<p class="admin-note">Ton nom et ton numéro WhatsApp sont enregistrés dans ton compte.</p><button class="btn l" type="button" onclick="signOut()">Se déconnecter</button>`:`<p class="admin-note">Sans compte, ces informations restent enregistrées uniquement dans ce navigateur.</p>`}</div></section>`,
  compte:()=>accountPage(),
