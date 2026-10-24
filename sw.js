@@ -1,4 +1,4 @@
-const CACHE = "apex-gaming-static-v2";
+const CACHE = "apex-gaming-static-v3";
 const ASSETS = ["./", "./index.html", "./style.css", "./app.js", "./data.js", "./supabase-config.js", "./icon.svg", "./manifest.webmanifest"];
 
 self.addEventListener("install", event => {
