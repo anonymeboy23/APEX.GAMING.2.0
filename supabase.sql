@@ -153,6 +153,74 @@ drop trigger if exists profiles_role_guard on public.profiles;
 create trigger profiles_role_guard before update on public.profiles
 for each row execute procedure public.prevent_customer_role_change();
 
+-- Administration des rôles depuis l'espace admin, sans exposer service_role au navigateur.
+create or replace function public.list_admin_accounts()
+returns table(account_email text, account_name text, created_at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = public, auth
+as $$
+begin
+  if auth.uid() is null or not public.is_admin() then
+    raise exception 'Administrator access required';
+  end if;
+
+  return query
+    select u.email::text, coalesce(p.name, ''), p.created_at
+    from public.profiles p
+    join auth.users u on u.id = p.id
+    where p.role = 'admin'
+    order by p.created_at;
+end;
+$$;
+
+create or replace function public.grant_admin_by_email(p_email text)
+returns text
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_user_id uuid;
+  v_email text;
+begin
+  if auth.uid() is null or not public.is_admin() then
+    raise exception 'Administrator access required';
+  end if;
+
+  if p_email is null or length(trim(p_email)) > 320 or trim(p_email) = '' then
+    raise exception 'Enter a valid account email';
+  end if;
+
+  select u.id, u.email
+    into v_user_id, v_email
+    from auth.users u
+    where lower(u.email) = lower(trim(p_email))
+    limit 1;
+
+  if v_user_id is null then
+    raise exception 'No account found for this email. Ask the person to create an account first';
+  end if;
+
+  insert into public.profiles (id, name, phone, role)
+    select v_user_id,
+      coalesce(u.raw_user_meta_data->>'name', ''),
+      u.raw_user_meta_data->>'phone',
+      'admin'
+    from auth.users u
+    where u.id = v_user_id
+  on conflict (id) do update set role = 'admin';
+
+  return v_email;
+end;
+$$;
+
+revoke all on function public.list_admin_accounts() from public, anon;
+revoke all on function public.grant_admin_by_email(text) from public, anon;
+grant execute on function public.list_admin_accounts() to authenticated;
+grant execute on function public.grant_admin_by_email(text) to authenticated;
+
 alter table public.profiles enable row level security;
 alter table public.products enable row level security;
 alter table public.inventory enable row level security;
