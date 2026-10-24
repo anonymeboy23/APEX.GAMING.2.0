@@ -372,35 +372,30 @@ function send(){
  profile={name:n,phone,email};saveProfile();
  const order="AG-"+Date.now().toString(36).toUpperCase();
  const orderItems=items().map(i=>({productId:i.productId||"",region:i.region||"",name:i.t,face:i.f,symbol:i.s,quantity:i.q,price:i.p}));
- orderItems.forEach(i=>{if(i.productId)inventory[i.productId]=Math.max(0,stockFor(i.productId)-i.quantity)});saveInventory();
  orders.unshift({id:order,createdAt:new Date().toISOString(),status:"En attente de confirmation",name:n,phone,email,note,total:finalTotal(),discount:discount(),payment:$("py").value,items:orderItems});orders=orders.slice(0,20);saveOrders();
  const t=["Bonjour Apex Gaming, je voudrais commander :","","Référence : "+order,...items().map(i=>`- ${i.q} x ${i.t} ${i.f} ${i.s} = ${m(i.q*i.p)}`),"",discount()?"Promotion : - "+m(discount()):"","Total : "+m(finalTotal()),"Paiement par : "+$("py").value,"Nom : "+n,"WhatsApp : "+phone].concat(email?["Email : "+email]:[],note?["Note : "+note]:[]).join("\n");
- const payload={id:order,name:n,phone,email,note,total:finalTotal(),items:orderItems.map(i=>({productId:i.productId,region:i.region,faceValue:Number(i.face),quantity:i.quantity,unitPrice:i.price}))};
+ const payload={id:order,name:n,phone,email,note,payment:$("py").value,total:finalTotal(),items:orderItems.map(i=>({productId:i.productId,region:i.region,faceValue:Number(i.face),quantity:i.quantity,unitPrice:i.price}))};
  const whatsappWindow=window.open("https://wa.me/"+S.wa+"?text="+encodeURIComponent(t),"_blank");
  syncOrder(payload);
 }
 async function syncOrder(payload){
- if(currentUser&&supabaseClient){
-  const {error:profileError}=await supabaseClient.from("profiles").update({name:payload.name,phone:payload.phone}).eq("id",currentUser.id);
-  if(profileError){reportAccountError(profileError,"Profil non synchronisé");return}
+ if(supabaseClient){
+  if(currentUser){
+   const {error:profileError}=await supabaseClient.from("profiles").update({name:payload.name,phone:payload.phone}).eq("id",currentUser.id);
+   if(profileError)console.error("Profil non synchronisé",profileError);
+  }
   const {error}=await supabaseClient.rpc("create_customer_order",{
    p_id:payload.id,p_customer_name:payload.name,p_phone:payload.phone,p_email:payload.email||null,
-   p_note:payload.note||null,p_total:payload.total,
+   p_note:payload.note||null,p_total:payload.total,p_payment_method:payload.payment,
    p_items:payload.items.map(item=>({productId:item.productId,region:item.region,faceValue:item.faceValue,quantity:item.quantity,unitPrice:item.unitPrice}))
   });
   if(error){reportAccountError(error,"WhatsApp est prêt, mais la commande n'a pas été synchronisée");return}
-  if(await loadAccountData()){draw(true);toast("Commande enregistrée dans ton compte.");}
+  if(currentUser)await loadAccountData();
+  if(isAdmin())adminDataLoaded=false;
+  toast("Commande enregistrée dans Supabase.");
   return;
  }
- try{
-  const response=await fetch("/api/orders",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
-  const result=await response.json();
-  if(!response.ok)throw new Error(result.error||"Erreur d'enregistrement");
-  toast("Commande enregistrée");
- }catch(error){
-  console.error("Order synchronization failed",error);
-  toast(error.message==="D1_NOT_CONFIGURED"?"WhatsApp est prêt. Crée un compte pour enregistrer et retrouver la commande.":"WhatsApp est prêt, mais le suivi de cette commande n'a pas pu être enregistré.");
- }
+ toast("WhatsApp est prêt, mais la commande n’a pas été enregistrée : Supabase n’est pas configuré.");
 }
 
 /* ===== PAGES ===== */
