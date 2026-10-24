@@ -14,6 +14,7 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var
 .logo{display:flex;align-items:center;gap:8px;text-decoration:none;font:700 1rem Unbounded,sans-serif}
 .logo svg{width:32px;height:32px}.logo b{color:var(--br)}
 nav{display:none;position:absolute;top:58px;right:0;width:min(400px,calc(100vw - 36px));grid-template-columns:1fr 1fr;gap:4px;padding:14px;background:var(--sf);border:1px solid var(--ln);border-radius:16px;box-shadow:0 18px 40px #0e1a4030}
+.nav-title{grid-column:1/-1;display:block;padding:2px 8px 11px;border-bottom:1px solid var(--ln);font-size:.72rem;font-weight:800;letter-spacing:.1em;color:var(--br)}
 nav:before{content:"MENU PRINCIPAL";grid-column:1/-1;display:block;padding:2px 8px 11px;border-bottom:1px solid var(--ln);font-size:.72rem;font-weight:800;letter-spacing:.1em;color:var(--br)}
 nav a{text-decoration:none;font-weight:700;font-size:.88rem;padding:11px 12px;border-radius:10px;color:var(--mu)}
 nav a.on{color:var(--br);background:var(--bg)}
