@@ -1,5 +1,5 @@
 -- Apex Gaming - base complète Supabase
--- À exécuter une seule fois dans Supabase > SQL Editor.
+-- À exécuter dans Supabase > SQL Editor, y compris après une mise à jour du site.
 -- Ne jamais mettre la clé service_role dans le navigateur.
 
 create extension if not exists pgcrypto;
@@ -20,6 +20,13 @@ create table if not exists public.products (
   description text not null default '',
   active boolean not null default true,
   created_at timestamptz not null default now()
+);
+
+create table if not exists public.customer_favorites (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  product_id text not null references public.products(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, product_id)
 );
 
 create table if not exists public.inventory (
@@ -129,6 +136,23 @@ as $$
   );
 $$;
 
+create or replace function public.prevent_customer_role_change()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if new.role is distinct from old.role and not public.is_admin() then
+    raise exception 'Only an administrator can change account roles';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_role_guard on public.profiles;
+create trigger profiles_role_guard before update on public.profiles
+for each row execute procedure public.prevent_customer_role_change();
+
 alter table public.profiles enable row level security;
 alter table public.products enable row level security;
 alter table public.inventory enable row level security;
@@ -136,6 +160,7 @@ alter table public.promotions enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 alter table public.reviews enable row level security;
+alter table public.customer_favorites enable row level security;
 
 drop policy if exists "profiles own read" on public.profiles;
 create policy "profiles own read" on public.profiles for select
@@ -145,6 +170,18 @@ drop policy if exists "profiles own update" on public.profiles;
 create policy "profiles own update" on public.profiles for update
   using (id = auth.uid() or public.is_admin())
   with check (id = auth.uid() or public.is_admin());
+
+drop policy if exists "favorites own read" on public.customer_favorites;
+create policy "favorites own read" on public.customer_favorites for select
+  using (user_id = auth.uid() or public.is_admin());
+
+drop policy if exists "favorites own insert" on public.customer_favorites;
+create policy "favorites own insert" on public.customer_favorites for insert
+  with check (user_id = auth.uid());
+
+drop policy if exists "favorites own delete" on public.customer_favorites;
+create policy "favorites own delete" on public.customer_favorites for delete
+  using (user_id = auth.uid() or public.is_admin());
 
 drop policy if exists "products public read" on public.products;
 create policy "products public read" on public.products for select
@@ -205,6 +242,74 @@ create policy "reviews admin moderate" on public.reviews for update
 drop policy if exists "reviews admin delete" on public.reviews;
 create policy "reviews admin delete" on public.reviews for delete
   using (public.is_admin());
+
+create or replace function public.create_customer_order(
+  p_id text,
+  p_customer_name text,
+  p_phone text,
+  p_email text,
+  p_note text,
+  p_total numeric,
+  p_items jsonb
+)
+returns text
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_item jsonb;
+begin
+  if v_user_id is null then
+    raise exception 'Sign in is required to save an account order';
+  end if;
+  if p_id !~ '^AG-[A-Z0-9]+$'
+     or length(p_customer_name) not between 2 and 120
+     or length(p_phone) not between 6 and 40
+     or length(coalesce(p_email, '')) > 160
+     or length(coalesce(p_note, '')) > 1000
+     or p_total < 0 or p_total > 1000000
+     or jsonb_typeof(p_items) <> 'array'
+     or jsonb_array_length(p_items) not between 1 and 50 then
+    raise exception 'Invalid order details';
+  end if;
+
+  insert into public.orders (
+    id, customer_id, status, customer_name, phone, email, note, total
+  ) values (
+    p_id, v_user_id, 'En attente de confirmation',
+    p_customer_name, p_phone, nullif(p_email, ''), nullif(p_note, ''), p_total
+  );
+
+  for v_item in select value from jsonb_array_elements(p_items)
+  loop
+    if jsonb_typeof(v_item) <> 'object'
+       or jsonb_typeof(v_item->'productId') <> 'string'
+       or jsonb_typeof(v_item->'region') <> 'string'
+       or jsonb_typeof(v_item->'faceValue') <> 'number'
+       or jsonb_typeof(v_item->'quantity') <> 'number'
+       or jsonb_typeof(v_item->'unitPrice') <> 'number'
+       or (v_item->>'quantity')::integer not between 1 and 100
+       or (v_item->>'faceValue')::numeric not between 0 and 1000000
+       or (v_item->>'unitPrice')::numeric not between 0 and 1000000
+       or length(v_item->>'region') > 10 then
+      raise exception 'Invalid order item';
+    end if;
+    insert into public.order_items (
+      order_id, product_id, region, face_value, quantity, unit_price
+    ) values (
+      p_id, v_item->>'productId', v_item->>'region',
+      (v_item->>'faceValue')::numeric, (v_item->>'quantity')::integer,
+      (v_item->>'unitPrice')::numeric
+    );
+  end loop;
+
+  return p_id;
+end;
+$$;
+
+revoke all on function public.create_customer_order(text, text, text, text, text, numeric, jsonb) from public;
+grant execute on function public.create_customer_order(text, text, text, text, text, numeric, jsonb) to authenticated;
 
 -- Données initiales du catalogue.
 insert into public.products (id, name, description, active) values
