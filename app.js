@@ -127,7 +127,7 @@ async function addAdminAccount(event){
  }finally{
   button.disabled=false;
  }
- if(error){console.error("Ajout de l’administrateur impossible",error);toast(`Ajout impossible : ${error.message||"erreur Supabase"}`);return}
+ if(error){console.error("Ajout de l’administrateur impossible",error);toast(`Ajout impossible : ${error?.message||"erreur Supabase"}`);return}
  form.reset();adminAccountsLoaded=false;
  toast("Accès administrateur accordé.");
  await loadAdminAccounts();
