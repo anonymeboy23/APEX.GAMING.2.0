@@ -6,7 +6,7 @@ const price=c=>Math.ceil(c*(1+S.margin)/S.round)*S.round;
 const m=n=>(Number.isInteger(n)?n:n.toFixed(2))+" $";
 let cart={},favorites=[],orders=[],reviews=[],inventory={},promo={code:"",percent:0,enabled:false},profile={name:"",phone:"",email:""},orderLookup=null,appliedPromo="",shopQuery="",shopSort="featured",shopRegion="all",recentProducts=[],theme="";
 const supabaseClient=window.apexSupabase;
-let currentUser=null,accountOrders=[],accountMode="login",accountReady=false,accountNotice="",accountRole=null;
+let currentUser=null,accountOrders=[],accountMode="login",accountReady=false,accountNotice="",accountRole=null,adminAccounts=[],adminAccountsLoaded=false,adminAccountsLoading=false,adminAccountsError="";
 try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");orders=JSON.parse(localStorage.getItem("apexorders")||"[]");reviews=JSON.parse(localStorage.getItem("apexreviews")||"[]");inventory=JSON.parse(localStorage.getItem("apexinventory")||"{}");promo=JSON.parse(localStorage.getItem("apexpromo")||'{"code":"","percent":0,"enabled":false}');profile=JSON.parse(localStorage.getItem("apexprofile")||'{"name":"","phone":"","email":""}');recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
 const isAdmin=()=>Boolean(currentUser&&accountReady&&accountRole==="admin");
 const save=()=>{try{localStorage.setItem("apexcart",JSON.stringify(cart))}catch(e){}};
@@ -94,6 +94,31 @@ async function initializeAccount(){
  if(currentUser)await loadAccountData();
  else accountRole=null;
  accountReady=true;draw(true);
+}
+async function loadAdminAccounts(){
+ if(!isAdmin()||adminAccountsLoading)return;
+ adminAccountsLoading=true;adminAccountsError="";
+ const {data,error}=await supabaseClient.rpc("list_admin_accounts");
+ adminAccountsLoading=false;adminAccountsLoaded=true;
+ if(error){
+  adminAccountsError=error.message||"Erreur Supabase";
+  console.error("Chargement des administrateurs impossible",error);
+ }else adminAccounts=data||[];
+ if(location.hash.replace(/^#\/?/,"").split("/")[0]==="admin")draw(true);
+}
+async function addAdminAccount(event){
+ event.preventDefault();
+ if(!isAdmin()||!supabaseClient){toast("Action réservée à un administrateur connecté.");return}
+ const form=event.currentTarget,email=String(new FormData(form).get("email")||"").trim();
+ if(!email){toast("Saisis l’adresse e-mail du compte à promouvoir.");return}
+ const button=form.querySelector('button[type="submit"]');
+ button.disabled=true;
+ const {error}=await supabaseClient.rpc("grant_admin_by_email",{p_email:email});
+ button.disabled=false;
+ if(error){console.error("Ajout de l’administrateur impossible",error);toast(`Ajout impossible : ${error.message||"erreur Supabase"}`);return}
+ form.reset();adminAccountsLoaded=false;
+ toast("Accès administrateur accordé.");
+ await loadAdminAccounts();
 }
 function authMessage(error){
  const messages={
