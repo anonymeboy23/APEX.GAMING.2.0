@@ -151,7 +151,7 @@ async function addAdminAccount(event){
 function mapStoredOrder(order){
  return {
   id:order.id,status:order.status,total:Number(order.total),createdAt:order.created_at,
-  name:order.customer_name,phone:order.phone,email:order.email,note:order.note,
+  name:order.customer_name,phone:order.phone,email:order.email,note:order.note,payment:order.payment_method,
   items:(order.order_items||[]).map(item=>({
    productId:item.product_id,name:orderItemName(item),region:item.region,
    face:Number(item.face_value),symbol:({US:"$",CA:"CA$",FR:"€",DE:"€",ES:"€",IT:"€",BE:"€",GB:"£"})[item.region]||"$",
@@ -162,22 +162,29 @@ function mapStoredOrder(order){
 async function loadAdminData(){
  if(!isAdmin()||adminDataLoading)return;
  adminDataLoading=true;adminDataLoaded=false;adminDataErrors=[];draw(true);
- const results=await Promise.all([
-  supabaseClient.rpc("get_admin_store_config"),
-  supabaseClient.from("orders").select("id,status,total,created_at,customer_name,phone,email,note,order_items(product_id,region,face_value,quantity,unit_price)").order("created_at",{ascending:false}).limit(200),
-  supabaseClient.from("reviews").select("id,customer_name,rating,message,approved,created_at").order("created_at",{ascending:false}).limit(200),
-  supabaseClient.rpc("list_admin_accounts")
- ]);
- const [configResult,ordersResult,reviewsResult,adminsResult]=results;
+ let configResult,ordersResult,reviewsResult,adminsResult;
+ try{
+  [configResult,ordersResult,reviewsResult,adminsResult]=await Promise.all([
+   supabaseClient.rpc("get_admin_store_config"),
+   supabaseClient.from("orders").select("id,status,total,created_at,customer_name,phone,email,note,payment_method,order_items(product_id,region,face_value,quantity,unit_price)").order("created_at",{ascending:false}).limit(200),
+   supabaseClient.from("reviews").select("id,customer_name,rating,message,approved,created_at").order("created_at",{ascending:false}).limit(200),
+   supabaseClient.rpc("list_admin_accounts")
+  ]);
+ }catch(error){
+  adminDataErrors.push(error?.message||"Connexion à Supabase impossible.");
+  adminDataLoading=false;adminDataLoaded=true;
+  if(location.hash.replace(/^#\/?/,"").split("/")[0]==="admin")draw(true);
+  return;
+ }
  if(configResult.error)adminDataErrors.push(`Réglages : ${configResult.error.message}`);
  else{
   try{applyStoreConfig(configResult.data);adminConfigLoaded=true}
   catch(error){adminDataErrors.push(`Réglages : ${error.message}`)}
  }
  if(ordersResult.error)adminDataErrors.push(`Commandes : ${ordersResult.error.message}`);
- else adminOrders=ordersResult.data.map(mapStoredOrder);
+ else adminOrders=(ordersResult.data||[]).map(mapStoredOrder);
  if(reviewsResult.error)adminDataErrors.push(`Avis : ${reviewsResult.error.message}`);
- else adminReviews=reviewsResult.data.map(review=>({
+ else adminReviews=(reviewsResult.data||[]).map(review=>({
   id:review.id,name:review.customer_name,rating:review.rating,message:review.message,
   approved:review.approved,createdAt:review.created_at
  }));
@@ -547,7 +554,7 @@ function draw(keep){
  if(n&&a!="panier"&&!adminView){const b=document.createElement("div");b.className="bar";b.id="cb";b.innerHTML=`<span><b>${n}</b> article${n>1?"s":""} · <b>${m(total())}</b></span><a class="btn d" href="#/panier">Voir le panier</a>`;document.body.appendChild(b)}
  applyTheme();
  if(keep)scrollTo(0,y);
- if(adminView&&!adminAccountsLoaded&&!adminAccountsLoading)loadAdminAccounts();
+ if(adminView&&!adminDataLoaded&&!adminDataLoading)loadAdminData();
 }
 addEventListener("hashchange",()=>{
  const h=location.hash.replace(/^#\/?/,"").split("/");
