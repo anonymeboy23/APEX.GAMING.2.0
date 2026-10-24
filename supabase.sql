@@ -43,6 +43,16 @@ create table if not exists public.promotions (
   ends_at timestamptz
 );
 
+create table if not exists public.store_settings (
+  id boolean primary key default true check (id),
+  margin numeric(5,4) not null default 0.60 check (margin between 0 and 5),
+  price_round numeric(12,2) not null default 1 check (price_round > 0),
+  payment_methods jsonb not null default '[["M-Pesa","XXX XXX XXX"],["Airtel Money","XXX XXX XXX"],["Orange Money","XXX XXX XXX"]]'::jsonb,
+  promo_code text not null default '',
+  promo_percent integer not null default 0 check (promo_percent between 0 and 90),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.orders (
   id text primary key,
   customer_id uuid references public.profiles(id) on delete set null,
@@ -221,6 +231,165 @@ revoke all on function public.grant_admin_by_email(text) from public, anon;
 grant execute on function public.list_admin_accounts() to authenticated;
 grant execute on function public.grant_admin_by_email(text) to authenticated;
 
+create or replace function public.get_storefront_config()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'margin', s.margin,
+    'round', s.price_round,
+    'pay', s.payment_methods,
+    'promo', jsonb_build_object(
+      'code', s.promo_code,
+      'percent', s.promo_percent,
+      'enabled', s.promo_code <> '' and s.promo_percent > 0
+    ),
+    'products', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', p.id, 'active', p.active,
+        'quantity', coalesce(i.quantity, 0)
+      ) order by p.id)
+      from public.products p
+      left join public.inventory i on i.product_id = p.id
+    ), '[]'::jsonb)
+  )
+  from public.store_settings s
+  where s.id = true;
+$$;
+
+create or replace function public.get_admin_store_config()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not public.is_admin() then
+    raise exception 'Administrator access required';
+  end if;
+  return public.get_storefront_config();
+end;
+$$;
+
+create or replace function public.save_admin_store_config(p_config jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_product jsonb;
+  v_pay jsonb;
+  v_count integer := 0;
+  v_updated integer;
+  v_code text;
+  v_percent integer;
+  v_margin numeric;
+  v_round numeric;
+begin
+  if auth.uid() is null or not public.is_admin() then
+    raise exception 'Administrator access required';
+  end if;
+  if jsonb_typeof(p_config) <> 'object'
+     or jsonb_typeof(p_config->'products') <> 'array'
+     or jsonb_typeof(p_config->'pay') <> 'array'
+     or jsonb_array_length(p_config->'pay') = 0
+     or jsonb_array_length(p_config->'pay') > 10 then
+    raise exception 'Invalid store settings';
+  end if;
+
+  v_margin := (p_config->>'margin')::numeric;
+  v_round := (p_config->>'round')::numeric;
+  v_code := upper(trim(coalesce(p_config->'promo'->>'code', '')));
+  v_percent := coalesce((p_config->'promo'->>'percent')::integer, 0);
+  v_pay := p_config->'pay';
+  if v_margin not between 0 and 5 or v_round <= 0
+     or length(v_code) > 20 or v_percent not between 0 and 90 then
+    raise exception 'Invalid margin, rounding, or promotion';
+  end if;
+
+  if exists (
+    select 1 from jsonb_array_elements(v_pay) method
+    where jsonb_typeof(method) <> 'array'
+       or jsonb_array_length(method) <> 2
+       or length(trim(coalesce(method->>0, ''))) not between 1 and 40
+       or length(trim(coalesce(method->>1, ''))) not between 1 and 60
+  ) then
+    raise exception 'Invalid payment method';
+  end if;
+
+  for v_product in select value from jsonb_array_elements(p_config->'products')
+  loop
+    if jsonb_typeof(v_product) <> 'object'
+       or jsonb_typeof(v_product->'id') <> 'string'
+       or jsonb_typeof(v_product->'active') <> 'boolean'
+       or jsonb_typeof(v_product->'quantity') <> 'number'
+       or (v_product->>'quantity')::integer not between 0 and 99999 then
+      raise exception 'Invalid product settings';
+    end if;
+
+    update public.products
+      set active = (v_product->>'active')::boolean
+      where id = v_product->>'id';
+    get diagnostics v_updated = row_count;
+    if v_updated <> 1 then
+      raise exception 'Unknown product: %', v_product->>'id';
+    end if;
+    insert into public.inventory (product_id, quantity)
+      values (v_product->>'id', (v_product->>'quantity')::integer)
+      on conflict (product_id) do update
+        set quantity = excluded.quantity, updated_at = now();
+    v_count := v_count + 1;
+  end loop;
+
+  if v_count <> (select count(*) from public.products) then
+    raise exception 'Every catalog product must be included';
+  end if;
+
+  insert into public.store_settings (id, margin, price_round, payment_methods, promo_code, promo_percent)
+    values (true, v_margin, v_round, v_pay, v_code, v_percent)
+  on conflict (id) do update set
+    margin = excluded.margin,
+    price_round = excluded.price_round,
+    payment_methods = excluded.payment_methods,
+    promo_code = excluded.promo_code,
+    promo_percent = excluded.promo_percent,
+    updated_at = now();
+
+  return public.get_storefront_config();
+end;
+$$;
+
+create or replace function public.lookup_store_order(p_id text, p_phone text)
+returns table(id text, status text, total numeric, created_at timestamptz)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select o.id, o.status, o.total, o.created_at
+  from public.orders o
+  where o.id = p_id and regexp_replace(o.phone, '[^0-9]', '', 'g') =
+    regexp_replace(coalesce(p_phone, ''), '[^0-9]', '', 'g')
+  limit 1;
+$$;
+
+revoke all on function public.get_storefront_config() from public;
+revoke all on function public.get_admin_store_config() from public, anon;
+revoke all on function public.save_admin_store_config(jsonb) from public, anon;
+revoke all on function public.lookup_store_order(text, text) from public;
+grant execute on function public.get_storefront_config() to anon, authenticated;
+grant execute on function public.get_admin_store_config() to authenticated;
+grant execute on function public.save_admin_store_config(jsonb) to authenticated;
+grant execute on function public.lookup_store_order(text, text) to anon, authenticated;
+
+insert into public.store_settings (id) values (true)
+on conflict (id) do nothing;
+
 alter table public.profiles enable row level security;
 alter table public.products enable row level security;
 alter table public.inventory enable row level security;
@@ -328,9 +497,6 @@ declare
   v_user_id uuid := auth.uid();
   v_item jsonb;
 begin
-  if v_user_id is null then
-    raise exception 'Sign in is required to save an account order';
-  end if;
   if p_id is null or p_customer_name is null or p_phone is null
      or p_total is null or p_items is null
      or p_id !~ '^AG-[A-Z0-9]+$'
@@ -379,7 +545,7 @@ end;
 $$;
 
 revoke all on function public.create_customer_order(text, text, text, text, text, numeric, jsonb) from public;
-grant execute on function public.create_customer_order(text, text, text, text, text, numeric, jsonb) to authenticated;
+grant execute on function public.create_customer_order(text, text, text, text, text, numeric, jsonb) to anon, authenticated;
 
 -- Données initiales du catalogue.
 insert into public.products (id, name, description, active) values
