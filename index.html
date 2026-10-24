@@ -9,6 +9,8 @@
 <meta property="og:title" content="Apex Gaming — Cartes cadeaux numériques">
 <meta property="og:description" content="Achète tes cartes cadeaux numériques avec des prix affichés à l'avance.">
 <meta property="og:site_name" content="Apex Gaming">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <title>Apex Gaming – Cartes cadeaux PlayStation, Spotify, Apple Music et plus</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Unbounded:wght@700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
@@ -27,5 +29,6 @@
 
 <script src="data.js"></script>
 <script src="app.js"></script>
+<script>if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));</script>
 </body>
 </html>
