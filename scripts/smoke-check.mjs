@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 
 const required = [
   "index.html", "style.css", "app.js", "data.js", "manifest.webmanifest", "icon.svg", "sw.js", "robots.txt", "wrangler.toml",
-  "_headers", "schema.sql", "seed.sql", "functions/api/health.js",
+  "_headers", "schema.sql", "seed.sql", "supabase.sql", "supabase-config.js", "functions/api/health.js",
   "functions/api/catalog.js", "functions/api/orders.js", "functions/api/orders/[id].js", "functions/api/admin/orders.js", "functions/api/admin/summary.js"
 ];
 
