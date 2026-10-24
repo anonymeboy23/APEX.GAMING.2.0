@@ -4,12 +4,14 @@
 const $=id=>document.getElementById(id);
 const price=c=>Math.ceil(c*(1+S.margin)/S.round)*S.round;
 const m=n=>(Number.isInteger(n)?n:n.toFixed(2))+" $";
-let cart={},admin=false,favorites=[],orders=[],shopQuery="",shopSort="featured",shopRegion="all",recentProducts=[],theme="";
-try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");admin=localStorage.getItem("apexadm")=="1";favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");orders=JSON.parse(localStorage.getItem("apexorders")||"[]");recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
+let cart={},admin=false,favorites=[],orders=[],inventory={},promo={code:"",percent:0,enabled:false},appliedPromo="",shopQuery="",shopSort="featured",shopRegion="all",recentProducts=[],theme="";
+try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");admin=localStorage.getItem("apexadm")=="1";favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");orders=JSON.parse(localStorage.getItem("apexorders")||"[]");inventory=JSON.parse(localStorage.getItem("apexinventory")||"{}");promo=JSON.parse(localStorage.getItem("apexpromo")||'{"code":"","percent":0,"enabled":false}');recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
 const save=()=>{try{localStorage.setItem("apexcart",JSON.stringify(cart))}catch(e){}};
 const saveFavorites=()=>{try{localStorage.setItem("apexfavorites",JSON.stringify(favorites))}catch(e){}};
 const saveRecent=()=>{try{localStorage.setItem("apexrecent",JSON.stringify(recentProducts))}catch(e){}};
 const saveOrders=()=>{try{localStorage.setItem("apexorders",JSON.stringify(orders))}catch(e){}};
+const saveInventory=()=>{try{localStorage.setItem("apexinventory",JSON.stringify(inventory))}catch(e){}};
+const savePromo=()=>{try{localStorage.setItem("apexpromo",JSON.stringify(promo))}catch(e){}};
 const escapeHtml=v=>String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const isFavorite=id=>favorites.includes(id);
 function toggleFavorite(id){favorites=isFavorite(id)?favorites.filter(x=>x!==id):[...favorites,id];saveFavorites();toast(isFavorite(id)?"Ajouté aux favoris":"Retiré des favoris");draw(true)}
@@ -17,6 +19,10 @@ function toast(message){const el=$("toast");if(!el)return;el.textContent=message
 function toggleTheme(){theme=theme=="dark"?"light":theme=="light"?"":"dark";try{localStorage.setItem("apextheme",theme)}catch(e){};applyTheme()}
 function applyTheme(){document.documentElement.dataset.theme=theme;if($("themeToggle"))$("themeToggle").textContent=theme=="dark"?"☀":theme=="light"?"☾":"◐"}
 function rememberProduct(id){recentProducts=[id,...recentProducts.filter(x=>x!==id)].slice(0,4);saveRecent()}
+const stockFor=id=>Number.isFinite(Number(inventory[id]))?Math.max(0,Number(inventory[id])):100;
+const discount=()=>appliedPromo&&promo.enabled&&promo.code&&promo.percent>0?Math.min(total(),total()*promo.percent/100):0;
+const finalTotal=()=>total()-discount();
+function applyPromo(){const input=$("promoCode"),value=input?input.value.trim().toUpperCase():"";if(!promo.enabled||!promo.code||value!==promo.code.toUpperCase()){toast("Code promotion invalide");return}appliedPromo=value;toast("Promotion appliquée");draw(true)}
 const CONFIG_KEY="apexadminconfig";
 function loadAdminConfig(){
  try{
@@ -41,8 +47,11 @@ function saveAdminSettings(event){
  if(!pay.length||pay.some(p=>!p[0]||!p[1])){alert("Garde au moins un moyen de paiement et complète tous les champs.");return}
  if(pay.some(p=>p[0].length>40||p[1].length>60)){alert("Les noms sont limités à 40 caractères et les numéros à 60.");return}
  S.margin=margin;S.pay=pay;
- P.forEach(p=>p.disabled=!form.querySelector(`[name="product-${p.id}"]`).checked);
- persistAdminConfig();draw();
+ P.forEach(p=>{p.disabled=!form.querySelector(`[name="product-${p.id}"]`).checked;const field=form.querySelector(`[name="stock-${p.id}"]`);if(field)inventory[p.id]=Math.max(0,Math.floor(Number(field.value)||0))});
+ const promoCode=form.elements.promoCode.value.trim().toUpperCase(),promoPercent=Number(form.elements.promoPercent.value)||0;
+ if(promoPercent<0||promoPercent>90){alert("La promotion doit être comprise entre 0 et 90 %.");return}
+ promo={code:promoCode,percent:promoPercent,enabled:Boolean(promoCode&&promoPercent)};appliedPromo="";
+ saveInventory();savePromo();persistAdminConfig();toast("Réglages enregistrés");draw();
 }
 function addPaymentRow(){
  const list=$("adminPayments"),row=document.createElement("div");
@@ -87,7 +96,7 @@ let sel={g:0,c:0};
 const head=(t,p,c)=>`<section class="ph" ${c?style(c):""}><div class="w"><h1>${t}</h1><p>${p}</p></div></section>`;
 const gcMini=(c,a,b,n)=>`<div class="gc mini" ${style(c)}><div class="gt"><span>Carte cadeau</span><span>${n}</span></div><div class="gf">${a}<small>${b}</small></div></div>`;
 const lowestPrice=p=>price(Math.min(...p.g.flatMap(g=>g.list.map(c=>c.k[0]*c.r))));
-const tiles=(list=P)=>`<div class="tiles">${list.filter(p=>!p.disabled).map(p=>`<a class="tile" href="#/p/${p.id}" ${style(p.c)}><span class="tile-top"><small>${isFavorite(p.id)?"★ Favori":""}</small><button class="tile-fav" type="button" aria-label="${isFavorite(p.id)?"Retirer des favoris":"Ajouter aux favoris"}" onclick="event.preventDefault();toggleFavorite('${p.id}')">${isFavorite(p.id)?"★":"☆"}</button></span><h3>${p.n}</h3><span>${p.d} · dès ${m(lowestPrice(p))}</span></a>`).join("")||"<p>Aucun produit ne correspond à ta recherche.</p>"}</div>`;
+const tiles=(list=P)=>`<div class="tiles">${list.filter(p=>!p.disabled).map(p=>`<a class="tile" href="#/p/${p.id}" ${style(p.c)}><span class="tile-top"><small>${isFavorite(p.id)?"★ Favori":""}</small><button class="tile-fav" type="button" aria-label="${isFavorite(p.id)?"Retirer des favoris":"Ajouter aux favoris"}" onclick="event.preventDefault();toggleFavorite('${p.id}')">${isFavorite(p.id)?"★":"☆"}</button></span><h3>${p.n}</h3><span>${p.d} · dès ${m(lowestPrice(p))}</span><small class="availability">${stockFor(p.id)>0?"Disponible · livraison digitale":"Rupture temporaire"}</small></a>`).join("")||"<p>Aucun produit ne correspond à ta recherche.</p>"}</div>`;
 const matchingProducts=()=>{let list=P.filter(p=>!p.disabled&&(!shopQuery||[p.n,p.d,p.id].join(" ").toLowerCase().includes(shopQuery.toLowerCase())));if(shopRegion!=="all")list=list.filter(p=>p.g.some(g=>g.list.some(c=>c.c===shopRegion)));if(shopSort==="price-up")list.sort((a,b)=>lowestPrice(a)-lowestPrice(b));if(shopSort==="price-down")list.sort((a,b)=>lowestPrice(b)-lowestPrice(a));if(shopSort==="name")list.sort((a,b)=>a.n.localeCompare(b.n));return list};
 const steps=`<ol class="st"><li><h3>Choisis ta carte</h3><p>Produit, région ou pays, et montant.</p></li><li><h3>Ajoute au panier</h3><p>Le prix en dollars est affiché avant de commander.</p></li><li><h3>Envoie sur WhatsApp</h3><p>Ta commande s'écrit toute seule. Tu n'as qu'à l'envoyer.</p></li><li><h3>Paie et reçois ton code</h3><p>Après confirmation du paiement, on t'envoie le code.</p></li></ol>`;
 
@@ -118,12 +127,12 @@ p:(id,gk)=>{
  return head(p.n+(g.l?" : "+g.l:""),p.d+". Les cartes ne fonctionnent que sur un compte de la même région.",g.c||p.c)+`<div class="w">
  ${p.g.length>1?`<div class="tabs">${p.g.map((x,i)=>`<button class="tab" aria-pressed="${i==gi}" onclick="sel={g:${i},c:0};draw(true)">${x.l}</button>`).join("")}</div>`:""}
  ${g.list.length>1?`<div class="tabs">${g.list.map((x,i)=>`<button class="tab" aria-pressed="${i==ci}" onclick="sel.c=${i};draw(true)">${x.c} · ${x.n}</button>`).join("")}</div>`:""}
- <div class="cards">${c.k.map(f=>{const cost=f*c.r,pr=price(cost),k=[p.id,c.c,c.n,f].join("|"),q=cart[k]?cart[k].q:0;
+ <div class="cards">${c.k.map(f=>{const cost=f*c.r,pr=price(cost),k=[p.id,c.c,c.n,f].join("|"),q=cart[k]?cart[k].q:0,available=stockFor(p.id)>0;
  return `<article class="gc" ${style(g.c||p.c)}><div class="gt"><span>Carte cadeau</span><button class="heart" type="button" aria-label="Ajouter ${p.n} aux favoris" onclick="toggleFavorite('${p.id}')">${isFavorite(p.id)?"★":"☆"}</button><span>${c.c}</span></div><div class="gf">${f}<small>${c.s}</small></div><div class="gn">${p.n} · ${c.n}</div>
- <div class="gb"><div class="gp"><small>Notre prix</small>${m(pr)}</div><div class="q"><button aria-label="Retirer" onclick="add(${pi},${gi},${ci},${f},-1)">−</button><span>${q}</span><button aria-label="Ajouter" onclick="add(${pi},${gi},${ci},${f},1)">+</button></div></div>
+ <div class="gb"><div class="gp"><small>Notre prix</small>${m(pr)}<em class="availability">${available?"Disponible":"Rupture"}</em></div><div class="q"><button aria-label="Retirer" onclick="add(${pi},${gi},${ci},${f},-1)">−</button><span>${q}</span><button aria-label="Ajouter" ${available?"":"disabled"} onclick="add(${pi},${gi},${ci},${f},1)">+</button></div></div>
  ${admin?`<div class="ga">Réel ${cost.toFixed(2)} $ · gain ${(pr-cost).toFixed(2)} $</div>`:""}</article>`}).join("")}</div></div>`},
 
-panier:()=>head("Mon panier","Vérifie ta commande, puis envoie-la sur WhatsApp.")+`<div class="w"><div class="cl">${count()?items().length&&Object.entries(cart).map(([k,i])=>`<div class="ln"><span>${i.t} ${i.f} ${i.s}</span><span class="q"><button aria-label="Retirer" onclick="chg('${k}',-1)">−</button><span>${i.q}</span><button aria-label="Ajouter" onclick="chg('${k}',1)">+</button></span><b>${m(i.q*i.p)}</b></div>`).join("")+`<div class="tt"><span>Total</span><span>${m(total())}</span></div>
+ panier:()=>head("Mon panier","Vérifie ta commande, puis envoie-la sur WhatsApp.")+`<div class="w"><div class="cl">${count()?items().length&&Object.entries(cart).map(([k,i])=>`<div class="ln"><span>${i.t} ${i.f} ${i.s}</span><span class="q"><button aria-label="Retirer" onclick="chg('${k}',-1)">−</button><span>${i.q}</span><button aria-label="Ajouter" onclick="chg('${k}',1)">+</button></span><b>${m(i.q*i.p)}</b></div>`).join("")+`<div class="promo-box"><label class="f">Code promotionnel<input id="promoCode" placeholder="Ex : APEX10"></label><button class="btn l" type="button" onclick="applyPromo()">Appliquer</button></div>${discount()?`<div class="discount-line"><span>Promotion (${promo.percent} %)</span><b>- ${m(discount())}</b></div>`:""}<div class="tt"><span>Total</span><span>${m(finalTotal())}</span></div>
  <div class="checkout-grid"><label class="f">Ton nom<input id="nm" placeholder="Ex : Jean" autocomplete="name" required></label><label class="f">Ton numéro WhatsApp<input id="phone" placeholder="Ex : 0973..." autocomplete="tel" required></label><label class="f">Email (facultatif)<input id="email" type="email" placeholder="nom@email.com" autocomplete="email"></label><label class="f">Moyen de paiement<select id="py">${S.pay.map(p=>`<option>${escapeHtml(p[0])}</option>`).join("")}</select></label></div><label class="f">Note pour la commande<textarea id="note" rows="3" placeholder="Région, compte concerné ou précision..."></textarea></label><div class="checkout-actions"><button class="btn l" type="button" onclick="clearCart()">Vider le panier</button><button class="btn g" onclick="send()">Commander sur WhatsApp</button></div><p class="secure-note">Commande confirmée manuellement · paiement vérifié avant livraison du code.</p>`:`<p>Ton panier est vide. <a href="#/boutique"><b>Voir la boutique</b></a></p>`}</div></div>`,
 
 commander:()=>head("Comment commander","De la boutique à ton code, étape par étape.")+`<section class="sec"><div class="w pr"><ol class="st" style="grid-template-columns:1fr">
