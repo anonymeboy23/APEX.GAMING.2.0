@@ -6,7 +6,7 @@ const price=c=>Math.ceil(c*(1+S.margin)/S.round)*S.round;
 const m=n=>(Number.isInteger(n)?n:n.toFixed(2))+" $";
 let cart={},favorites=[],orders=[],reviews=[],inventory={},promo={code:"",percent:0,enabled:false},profile={name:"",phone:"",email:""},orderLookup=null,appliedPromo="",shopQuery="",shopSort="featured",shopRegion="all",recentProducts=[],theme="";
 const supabaseClient=window.apexSupabase;
-let currentUser=null,accountOrders=[],accountMode="login",accountReady=false,accountNotice="",accountRole=null,adminAccounts=[],adminAccountsLoaded=false,adminAccountsLoading=false,adminAccountsError="";
+let currentUser=null,accountOrders=[],accountMode="login",accountReady=false,accountNotice="",accountRole=null,adminAccounts=[],adminAccountsLoaded=false,adminAccountsError="";
 try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");orders=JSON.parse(localStorage.getItem("apexorders")||"[]");reviews=JSON.parse(localStorage.getItem("apexreviews")||"[]");inventory=JSON.parse(localStorage.getItem("apexinventory")||"{}");promo=JSON.parse(localStorage.getItem("apexpromo")||'{"code":"","percent":0,"enabled":false}');profile=JSON.parse(localStorage.getItem("apexprofile")||'{"name":"","phone":"","email":""}');recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
 const isAdmin=()=>Boolean(currentUser&&accountReady&&accountRole==="admin");
 let adminOrders=[],adminReviews=[],adminDataLoaded=false,adminDataLoading=false,adminDataErrors=[],adminConfigLoaded=false;
@@ -276,9 +276,46 @@ async function saveCustomerProfile(event){
  }
  saveProfile();toast("Profil enregistré");draw(true);
 }
-function submitReview(event){event.preventDefault();const form=event.currentTarget,name=form.elements.reviewName.value.trim(),message=form.elements.reviewMessage.value.trim(),rating=Number(form.elements.reviewRating.value);if(name.length<2||message.length<8||rating<1||rating>5){toast("Complète ton avis correctement");return}reviews.unshift({name,message,rating,approved:false,createdAt:new Date().toISOString()});reviews=reviews.slice(0,30);saveReviews();toast("Merci, ton avis sera vérifié");form.reset();draw(true)}
-function moderateReview(index,approved){if(!reviews[index])return;if(approved)reviews[index].approved=true;else reviews.splice(index,1);saveReviews();toast(approved?"Avis publié":"Avis supprimé");draw(true)}
-async function lookupOrder(){const id=$("lookupId").value.trim().toUpperCase(),phone=$("lookupPhone").value.trim();if(!id||!phone){toast("Indique la référence et le numéro WhatsApp");return}try{const response=await fetch(`/api/orders/${encodeURIComponent(id)}?phone=${encodeURIComponent(phone)}`);const result=await response.json();if(!response.ok)throw new Error(result.error);orderLookup=result.order;draw(true)}catch(e){orderLookup=null;toast(e.message==="D1_NOT_CONFIGURED"?"Le suivi invité n'est pas encore configuré. Crée un compte pour retrouver tes commandes.":"Commande introuvable ou suivi indisponible")}}
+async function submitReview(event){
+ event.preventDefault();
+ if(!supabaseClient){toast("Les avis ne peuvent pas être enregistrés : Supabase n’est pas configuré.");return}
+ const form=event.currentTarget,name=form.elements.reviewName.value.trim(),message=form.elements.reviewMessage.value.trim(),rating=Number(form.elements.reviewRating.value);
+ if(name.length<2||message.length<8||rating<1||rating>5){toast("Complète ton avis correctement");return}
+ const {error}=await supabaseClient.from("reviews").insert({customer_id:currentUser?.id||null,customer_name:name,rating,message});
+ if(error){reportAccountError(error,"Enregistrement de l’avis impossible");return}
+ toast("Merci, ton avis sera vérifié");form.reset();draw(true);
+}
+async function moderateReview(id,approved){
+ if(!isAdmin()||!supabaseClient){toast("Action réservée à un administrateur connecté.");return}
+ const result=approved
+  ?await supabaseClient.from("reviews").update({approved:true}).eq("id",id)
+  :await supabaseClient.from("reviews").delete().eq("id",id);
+ if(result.error){reportAccountError(result.error,"Modération de l’avis impossible");return}
+ adminReviews=adminReviews.filter(review=>review.id!==id||approved).map(review=>review.id===id?{...review,approved:true}:review);
+ reviews=adminReviews;toast(approved?"Avis publié":"Avis supprimé");draw(true);
+}
+async function lookupOrder(){
+ const id=$("lookupId").value.trim().toUpperCase(),phone=$("lookupPhone").value.trim();
+ if(!id||!phone){toast("Indique la référence et le numéro WhatsApp");return}
+ try{
+  if(supabaseClient){
+   const {data,error}=await supabaseClient.rpc("lookup_store_order",{p_id:id,p_phone:phone});
+   if(error)throw error;
+   const order=Array.isArray(data)?data[0]:data;
+   if(!order)throw new Error("ORDER_NOT_FOUND");
+   orderLookup=order;
+  }else{
+   const response=await fetch(`/api/orders/${encodeURIComponent(id)}?phone=${encodeURIComponent(phone)}`);
+   const result=await response.json();
+   if(!response.ok)throw new Error(result.error);
+   orderLookup=result.order;
+  }
+  draw(true);
+ }catch(error){
+  orderLookup=null;
+  toast(error.message==="D1_NOT_CONFIGURED"?"Le suivi des commandes n’est pas configuré.":"Commande introuvable ou suivi indisponible");
+ }
+}
 function addPaymentRow(){
  const list=$("adminPayments"),row=document.createElement("div");
  row.className="admin-pay-row";
@@ -302,10 +339,17 @@ const PRODUCT_INFO={
  steam:{about:"Ajoute du crédit à ton portefeuille Steam pour tes jeux PC.",activation:"Compte Steam",tip:"La région de ton portefeuille doit être compatible."},
  google:{about:"Achète des applications, jeux et contenus Google Play.",activation:"Compte Google",tip:"La région Google Play doit correspondre au pays de la carte."}
 };
-const ORDER_STATUSES=["En attente de confirmation","Paiement confirmé","En préparation","Livrée","Annulée"];
-function updateOrderStatus(id,status){const order=orders.find(o=>o.id===id);if(!order)return;order.status=status;saveOrders();toast("Statut de commande mis à jour");draw(true)}
+const ORDER_STATUSES=["En attente de confirmation","Confirmée","En préparation","Livrée","Annulée"];
+async function updateOrderStatus(id,status){
+ if(!isAdmin()||!ORDER_STATUSES.includes(status)){toast("Statut invalide ou accès administrateur requis.");return}
+ const {error}=await supabaseClient.from("orders").update({status}).eq("id",id);
+ if(error){reportAccountError(error,"Mise à jour de la commande impossible");return}
+ const order=adminOrders.find(item=>item.id===id);
+ if(order)order.status=status;
+ toast("Statut de commande enregistré dans Supabase.");draw(true);
+}
 function csvCell(value){return `"${String(value??"").replace(/"/g,'""')}"`}
-function exportOrders(){if(!orders.length){toast("Aucune commande à exporter");return}const header=["Référence","Date","Statut","Nom","WhatsApp","Email","Paiement","Total","Articles"];const rows=orders.map(o=>[o.id,o.createdAt,o.status,o.name,o.phone,o.email,o.payment,o.total,(o.items||[]).map(i=>`${i.quantity} x ${i.name} ${i.face}${i.symbol}`).join(" | ")]);const csv="\uFEFF"+[header,...rows].map(row=>row.map(csvCell).join(";")).join("\r\n");const link=document.createElement("a");link.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));link.download=`apex-gaming-commandes-${new Date().toISOString().slice(0,10)}.csv`;link.click();URL.revokeObjectURL(link.href);toast("Export téléchargé")}
+function exportOrders(){const source=adminOrders;if(!source.length){toast("Aucune commande enregistrée dans Supabase");return}const header=["Référence","Date","Statut","Nom","WhatsApp","Email","Note","Total","Articles"];const rows=source.map(order=>[order.id,order.createdAt,order.status,order.name,order.phone,order.email,order.note,order.total,(order.items||[]).map(item=>`${item.quantity} x ${item.name} ${item.face}${item.symbol}`).join(" | ")]);const csv="\uFEFF"+[header,...rows].map(row=>row.map(csvCell).join(";")).join("\r\n");const link=document.createElement("a");link.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));link.download=`apex-gaming-commandes-${new Date().toISOString().slice(0,10)}.csv`;link.click();URL.revokeObjectURL(link.href);toast("Export des commandes Supabase téléchargé")}
 $("fl").innerHTML=PAGES.concat([["avis","Avis clients"],["conditions","Conditions générales"],["confidentialite","Confidentialité"],["remboursement","Remboursement"]]).map(p=>`<li><a href="#/${p[0]}">${p[1]}</a></li>`).join("");
 $("fw").href="https://wa.me/"+S.wa;$("fw").textContent="WhatsApp : "+S.phone;
 $("fi").href="https://www.instagram.com/"+S.ig;$("fi").textContent="Instagram : "+S.ig;
