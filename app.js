@@ -429,9 +429,11 @@ async function syncOrder(payload){
   });
   if(error){reportAccountError(error,"Enregistrement de la commande impossible");return false}
   if(currentUser){
-   const {error:profileError}=await supabaseClient.from("profiles").update({name:payload.name,phone:payload.phone}).eq("id",currentUser.id);
-   if(profileError)console.error("Profil non synchronisé",profileError);
-   await loadAccountData();
+   try{
+    const {error:profileError}=await supabaseClient.from("profiles").update({name:payload.name,phone:payload.phone}).eq("id",currentUser.id);
+    if(profileError)console.error("Profil non synchronisé",profileError);
+    await loadAccountData();
+   }catch(profileError){console.error("Actualisation du compte après commande impossible",profileError)}
   }
   if(isAdmin())adminDataLoaded=false;
   toast("Commande enregistrée dans Supabase.");
