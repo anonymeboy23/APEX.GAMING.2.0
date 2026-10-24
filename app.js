@@ -396,37 +396,50 @@ function add(pi,gi,ci,face,d){
 }
 function chg(k,d){cart[k].q=Math.max(0,cart[k].q+d);if(!cart[k].q)delete cart[k];save();draw(true)}
 function clearCart(){if(!count())return;if(confirm("Vider tout le panier ?")){cart={};save();draw();toast("Panier vidé")}}
-function send(){
+async function send(button){
+ if(!supabaseClient){toast("Commande indisponible : Supabase n’est pas configuré.");return}
+ if(button?.disabled)return;
+ if(button)button.disabled=true;
  const n=$("nm").value.trim(),phone=$("phone").value.trim(),email=$("email").value.trim(),note=$("note").value.trim();
- if(!n||!phone){toast("Indique ton nom et ton numéro WhatsApp");return}
+ if(!n||!phone){if(button)button.disabled=false;toast("Indique ton nom et ton numéro WhatsApp");return}
  profile={name:n,phone,email};saveProfile();
  const order="AG-"+Date.now().toString(36).toUpperCase();
  const orderItems=items().map(i=>({productId:i.productId||"",region:i.region||"",name:i.t,face:i.f,symbol:i.s,quantity:i.q,price:i.p}));
  const t=["Bonjour Apex Gaming, je voudrais commander :","","Référence : "+order,...items().map(i=>`- ${i.q} x ${i.t} ${i.f} ${i.s} = ${m(i.q*i.p)}`),"",discount()?"Promotion : - "+m(discount()):"","Total : "+m(finalTotal()),"Paiement par : "+$("py").value,"Nom : "+n,"WhatsApp : "+phone].concat(email?["Email : "+email]:[],note?["Note : "+note]:[]).join("\n");
  const payload={id:order,name:n,phone,email,note,payment:$("py").value,total:finalTotal(),items:orderItems.map(i=>({productId:i.productId,region:i.region,faceValue:Number(i.face),quantity:i.quantity,unitPrice:i.price}))};
- const whatsappWindow=window.open("https://wa.me/"+S.wa+"?text="+encodeURIComponent(t),"_blank");
- syncOrder(payload);
-}
-async function syncOrder(payload){
- if(supabaseClient){
-  try{
-   const {error}=await supabaseClient.rpc("create_customer_order",{
-    p_id:payload.id,p_customer_name:payload.name,p_phone:payload.phone,p_email:payload.email||null,
-    p_note:payload.note||null,p_total:payload.total,p_payment_method:payload.payment,
-    p_items:payload.items.map(item=>({productId:item.productId,region:item.region,faceValue:item.faceValue,quantity:item.quantity,unitPrice:item.unitPrice}))
-   });
-   if(error){reportAccountError(error,"WhatsApp est prêt, mais la commande n'a pas été synchronisée");return}
-   if(currentUser){
-    const {error:profileError}=await supabaseClient.from("profiles").update({name:payload.name,phone:payload.phone}).eq("id",currentUser.id);
-    if(profileError)console.error("Profil non synchronisé",profileError);
-    await loadAccountData();
-   }
-   if(isAdmin())adminDataLoaded=false;
-   toast("Commande enregistrée dans Supabase.");
-  }catch(error){reportAccountError(error,"WhatsApp est prêt, mais la commande n'a pas été synchronisée")}
+ const whatsappWindow=window.open("about:blank","_blank");
+ const saved=await syncOrder(payload);
+ if(!saved){
+  whatsappWindow?.close();
+  if(button)button.disabled=false;
   return;
  }
- toast("WhatsApp est prêt, mais la commande n’a pas été enregistrée : Supabase n’est pas configuré.");
+ for(const item of payload.items)inventory[item.productId]=Math.max(0,stockFor(item.productId)-item.quantity);
+ if(whatsappWindow)whatsappWindow.location.href="https://wa.me/"+S.wa+"?text="+encodeURIComponent(t);
+ else toast("Commande enregistrée, mais WhatsApp a été bloqué par le navigateur.");
+ draw(true);
+}
+async function syncOrder(payload){
+ if(!supabaseClient)return false;
+ try{
+  const {error}=await supabaseClient.rpc("create_customer_order",{
+   p_id:payload.id,p_customer_name:payload.name,p_phone:payload.phone,p_email:payload.email||null,
+   p_note:payload.note||null,p_total:payload.total,p_payment_method:payload.payment,
+   p_items:payload.items.map(item=>({productId:item.productId,region:item.region,faceValue:item.faceValue,quantity:item.quantity,unitPrice:item.unitPrice}))
+  });
+  if(error){reportAccountError(error,"Enregistrement de la commande impossible");return false}
+  if(currentUser){
+   const {error:profileError}=await supabaseClient.from("profiles").update({name:payload.name,phone:payload.phone}).eq("id",currentUser.id);
+   if(profileError)console.error("Profil non synchronisé",profileError);
+   await loadAccountData();
+  }
+  if(isAdmin())adminDataLoaded=false;
+  toast("Commande enregistrée dans Supabase.");
+  return true;
+ }catch(error){
+  reportAccountError(error,"Enregistrement de la commande impossible");
+  return false;
+ }
 }
 
 /* ===== PAGES ===== */
@@ -506,7 +519,7 @@ p:(id,gk)=>{
  ${isAdmin()?`<div class="ga">Réel ${cost.toFixed(2)} $ · gain ${(pr-cost).toFixed(2)} $</div>`:""}</article>`}).join("")}</div></div>`},
 
  panier:()=>head("Mon panier","Vérifie ta commande, puis envoie-la sur WhatsApp.")+`<div class="w"><div class="cl">${count()?items().length&&Object.entries(cart).map(([k,i])=>`<div class="ln"><span>${i.t} ${i.f} ${i.s}</span><span class="q"><button aria-label="Retirer" onclick="chg('${k}',-1)">−</button><span>${i.q}</span><button aria-label="Ajouter" onclick="chg('${k}',1)">+</button></span><b>${m(i.q*i.p)}</b></div>`).join("")+`<div class="promo-box"><label class="f">Code promotionnel<input id="promoCode" placeholder="Ex : APEX10"></label><button class="btn l" type="button" onclick="applyPromo()">Appliquer</button></div>${discount()?`<div class="discount-line"><span>Promotion (${promo.percent} %)</span><b>- ${m(discount())}</b></div>`:""}<div class="tt"><span>Total</span><span>${m(finalTotal())}</span></div>
- <div class="checkout-grid"><label class="f">Ton nom<input id="nm" value="${escapeHtml(profile.name)}" placeholder="Ex : Jean" autocomplete="name" required></label><label class="f">Ton numéro WhatsApp<input id="phone" value="${escapeHtml(profile.phone)}" placeholder="Ex : 0973..." autocomplete="tel" required></label><label class="f">Email (facultatif)<input id="email" type="email" value="${escapeHtml(profile.email)}" placeholder="nom@email.com" autocomplete="email"></label><label class="f">Moyen de paiement<select id="py">${S.pay.map(p=>`<option>${escapeHtml(p[0])}</option>`).join("")}</select></label></div><label class="f">Note pour la commande<textarea id="note" rows="3" placeholder="Région, compte concerné ou précision..."></textarea></label><div class="checkout-actions"><button class="btn l" type="button" onclick="clearCart()">Vider le panier</button><button class="btn g" onclick="send()">Commander sur WhatsApp</button></div><p class="secure-note">Commande confirmée manuellement · paiement vérifié avant livraison du code.</p>`:`<p>Ton panier est vide. <a href="#/boutique"><b>Voir la boutique</b></a></p>`}</div></div>`,
+ <div class="checkout-grid"><label class="f">Ton nom<input id="nm" value="${escapeHtml(profile.name)}" placeholder="Ex : Jean" autocomplete="name" required></label><label class="f">Ton numéro WhatsApp<input id="phone" value="${escapeHtml(profile.phone)}" placeholder="Ex : 0973..." autocomplete="tel" required></label><label class="f">Email (facultatif)<input id="email" type="email" value="${escapeHtml(profile.email)}" placeholder="nom@email.com" autocomplete="email"></label><label class="f">Moyen de paiement<select id="py">${S.pay.map(p=>`<option>${escapeHtml(p[0])}</option>`).join("")}</select></label></div><label class="f">Note pour la commande<textarea id="note" rows="3" placeholder="Région, compte concerné ou précision..."></textarea></label><div class="checkout-actions"><button class="btn l" type="button" onclick="clearCart()">Vider le panier</button><button class="btn g" onclick="send(this)">Commander sur WhatsApp</button></div><p class="secure-note">Commande confirmée manuellement · paiement vérifié avant livraison du code.</p>`:`<p>Ton panier est vide. <a href="#/boutique"><b>Voir la boutique</b></a></p>`}</div></div>`,
 
 commander:()=>head("Comment commander","De la boutique à ton code, étape par étape.")+`<section class="sec"><div class="w pr"><ol class="st" style="grid-template-columns:1fr">
 <li><h3>Vérifie la région de ton compte</h3><p>Une carte américaine ne marche pas sur un compte européen. Pour PlayStation, choisis Amérique ou Europe, puis ton pays.</p></li>
