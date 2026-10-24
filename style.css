@@ -10,14 +10,15 @@ h1,h2,h3{font-family:Unbounded,Manrope,sans-serif;line-height:1.2;letter-spacing
 a{color:inherit}:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
 .w{max-width:1100px;margin:0 auto;padding:0 18px}
 header{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--sf);border-bottom:1px solid var(--ln)}
-.hi{display:flex;align-items:center;justify-content:space-between;height:64px;gap:10px}
+.hi{position:relative;display:flex;align-items:center;justify-content:space-between;height:64px;gap:10px}
 .logo{display:flex;align-items:center;gap:8px;text-decoration:none;font:700 1rem Unbounded,sans-serif}
 .logo svg{width:32px;height:32px}.logo b{color:var(--br)}
-nav{display:flex;gap:2px;align-items:center;flex-wrap:wrap}
-nav a{text-decoration:none;font-weight:700;font-size:.88rem;padding:8px 10px;border-radius:9px;color:var(--mu)}
+nav{display:none;position:absolute;top:58px;right:0;width:min(380px,calc(100vw - 36px));grid-template-columns:1fr 1fr;gap:4px;padding:12px;background:var(--sf);border:1px solid var(--ln);border-radius:16px;box-shadow:0 18px 40px #0e1a4030}
+nav a{text-decoration:none;font-weight:700;font-size:.88rem;padding:11px 12px;border-radius:10px;color:var(--mu)}
 nav a.on{color:var(--br);background:var(--bg)}
-.bg{display:none;background:none;border:1px solid var(--ln);border-radius:9px;width:42px;height:42px;font-size:1.2rem;color:var(--ink);cursor:pointer}
-@media(max-width:900px){.bg{display:block}nav{display:none;position:absolute;top:64px;left:0;right:0;background:var(--sf);flex-direction:column;align-items:stretch;padding:10px 18px 16px;border-bottom:1px solid var(--ln)}nav.o{display:flex}}
+.nav-toggle{display:block;background:none;border:1px solid var(--ln);border-radius:9px;width:42px;height:42px;font-size:1.2rem;color:var(--ink);cursor:pointer}
+nav.o{display:grid}
+@media(max-width:600px){nav{left:0;right:0;width:auto;grid-template-columns:1fr}.nav-toggle{width:44px;height:44px}}
 .btn{display:inline-block;text-decoration:none;font:800 1rem Manrope,sans-serif;padding:13px 24px;border-radius:40px;background:var(--sun);color:#14213d;border:0;cursor:pointer}
 .btn.d{background:var(--bb);color:#fff}.btn.g{background:var(--wa);color:#fff}.btn.l{background:none;color:inherit;border:2px solid currentColor}
 .btn:disabled{opacity:.4;cursor:not-allowed}

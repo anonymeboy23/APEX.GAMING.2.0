@@ -89,7 +89,8 @@ $("fl").innerHTML=PAGES.concat([["avis","Avis clients"],["conditions","Condition
 $("fw").href="https://wa.me/"+S.wa;$("fw").textContent="WhatsApp : "+S.phone;
 $("fi").href="https://www.instagram.com/"+S.ig;$("fi").textContent="Instagram : "+S.ig;
 $("fs").href="https://www.snapchat.com/add/"+S.sn;$("fs").textContent="Snapchat : "+S.sn;
-$("bg").onclick=()=>{const o=$("nav").classList.toggle("o");$("bg").setAttribute("aria-expanded",o)};
+$("bg").onclick=()=>{const o=$("nav").classList.toggle("o");$("bg").setAttribute("aria-expanded",o);$("bg").setAttribute("aria-label",o?"Fermer le menu":"Ouvrir le menu");$("bg").textContent=o?"×":"☰"};
+$("nav").addEventListener("click",()=>{$("nav").classList.remove("o");$("bg").setAttribute("aria-expanded","false");$("bg").setAttribute("aria-label","Ouvrir le menu");$("bg").textContent="☰"});
 
 /* ===== PANIER ===== */
 function add(pi,gi,ci,face,d){
@@ -216,6 +217,6 @@ function draw(keep){
 addEventListener("hashchange",()=>{
  const h=location.hash.replace(/^#\/?/,"").split("/");
  sel={g:h[0]=="p"&&h[2]!=null?+h[2]||0:0,c:0};
- $("nav").classList.remove("o");draw();scrollTo(0,0);
+ $("nav").classList.remove("o");$("bg").setAttribute("aria-expanded","false");$("bg").setAttribute("aria-label","Ouvrir le menu");$("bg").textContent="☰";draw();scrollTo(0,0);
 });
 draw();
