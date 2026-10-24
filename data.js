@@ -1,11 +1,11 @@
-/* DONNÉES : c'est ici que tu modifies prix, marge, produits, numéros de paiement et contacts.
-   Ne touche pas aux autres fichiers pour ça. */
+/* DONNÉES DU CATALOGUE : prix de base, produits et coordonnées de contact.
+   Marge, promotions, stock et moyens de paiement sont chargés depuis Supabase. */
 
 /* ===== RÉGLAGES : modifie ici ===== */
 const S={
  wa:"243973511943",phone:"0973511943",ig:"kaghoma06",sn:"kaghoma06",
- margin:0.60, round:1,   // 0.60 = 60 % de gain : 10 $ devient 16 $ (0.80 pour 18 $). round:1 = arrondi au dollar
- pay:[["M-Pesa","XXX XXX XXX"],["Airtel Money","XXX XXX XXX"],["Orange Money","XXX XXX XXX"]] // mets tes vrais numéros
+ margin:0.60, round:1,
+ pay:[["M-Pesa","XXX XXX XXX"],["Airtel Money","XXX XXX XXX"],["Orange Money","XXX XXX XXX"]]
 };
 // rate = valeur de la devise en dollars (à mettre à jour). cn(pays, code, symbole, rate, montants)
 const cn=(n,c,s,r,k)=>({n,c,s,r,k});
@@ -22,4 +22,3 @@ const P=[
 {id:"steam",n:"Steam",d:"Jeux PC",c:["#2a475e","#101d29"],g:us([20,50,100])},
 {id:"google",n:"Google Play",d:"Apps et jeux Android",c:["#0a8f8a","#115a8c"],g:us([10,25,50,100])}
 ];
-// Administration locale : ouvre l'adresse du site suivie de #/admin pour gérer la boutique dans ce navigateur.
