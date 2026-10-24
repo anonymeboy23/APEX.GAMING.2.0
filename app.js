@@ -57,12 +57,18 @@ function applyStoreConfig(config){
 }
 async function loadStorefrontConfig(){
  if(!supabaseClient)return;
- const {data,error}=await supabaseClient.rpc("get_storefront_config");
+ const [{data,error},{data:reviewData,error:reviewError}]=await Promise.all([
+  supabaseClient.rpc("get_storefront_config"),
+  supabaseClient.from("reviews").select("id,customer_name,rating,message,approved,created_at").eq("approved",true).order("created_at",{ascending:false}).limit(100)
+ ]);
  if(error){console.error("Chargement de la boutique impossible",error);toast("Les réglages partagés n’ont pas pu être chargés.");return}
  if(!adminConfigLoaded){
   try{applyStoreConfig(data);draw(true)}
   catch(configError){console.error("Configuration de la boutique invalide",configError);toast("La configuration partagée de la boutique est invalide.")}
  }
+ if(reviewError){console.error("Chargement des avis publiés impossible",reviewError);return}
+ reviews=reviewData.map(review=>({id:review.id,name:review.customer_name,rating:review.rating,message:review.message,approved:true,createdAt:review.created_at}));
+ draw(true);
 }
 async function loadAccountData(){
  if(!supabaseClient||!currentUser)return false;
