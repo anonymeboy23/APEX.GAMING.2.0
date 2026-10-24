@@ -80,6 +80,7 @@ async function initializeAccount(){
  supabaseClient.auth.onAuthStateChange((event,session)=>{
   currentUser=session?.user||null;
   accountRole=null;accountReady=false;
+  adminAccounts=[];adminAccountsLoaded=false;adminAccountsError="";
   if(event==="PASSWORD_RECOVERY"){accountMode="reset";location.hash="#/compte"}
   Promise.resolve().then(async()=>{
    if(currentUser)await loadAccountData();
@@ -98,12 +99,17 @@ async function initializeAccount(){
 async function loadAdminAccounts(){
  if(!isAdmin()||adminAccountsLoading)return;
  adminAccountsLoading=true;adminAccountsError="";
- const {data,error}=await supabaseClient.rpc("list_admin_accounts");
- adminAccountsLoading=false;adminAccountsLoaded=true;
- if(error){
-  adminAccountsError=error.message||"Erreur Supabase";
+ try{
+  const {data,error}=await supabaseClient.rpc("list_admin_accounts");
+  if(error)throw error;
+  adminAccounts=data||[];
+ }catch(error){
+  adminAccountsError=error?.message||"Erreur Supabase";
   console.error("Chargement des administrateurs impossible",error);
- }else adminAccounts=data||[];
+ }finally{
+  adminAccountsLoading=false;adminAccountsLoaded=true;
+ }
+ if(!isAdmin())return;
  if(location.hash.replace(/^#\/?/,"").split("/")[0]==="admin")draw(true);
 }
 async function addAdminAccount(event){
@@ -113,8 +119,14 @@ async function addAdminAccount(event){
  if(!email){toast("Saisis l’adresse e-mail du compte à promouvoir.");return}
  const button=form.querySelector('button[type="submit"]');
  button.disabled=true;
- const {error}=await supabaseClient.rpc("grant_admin_by_email",{p_email:email});
- button.disabled=false;
+ let error;
+ try{
+  ({error}=await supabaseClient.rpc("grant_admin_by_email",{p_email:email}));
+ }catch(requestError){
+  error=requestError;
+ }finally{
+  button.disabled=false;
+ }
  if(error){console.error("Ajout de l’administrateur impossible",error);toast(`Ajout impossible : ${error.message||"erreur Supabase"}`);return}
  form.reset();adminAccountsLoaded=false;
  toast("Accès administrateur accordé.");
@@ -308,7 +320,7 @@ const head=(t,p,c)=>`<section class="ph" ${c?style(c):""}><div class="w"><h1>${t
 const adminPage=()=>{
  const pending=orders.filter(order=>order.status==="En attente de confirmation").length;
  return `<section class="admin-page"><div class="admin-page-heading"><div><p class="admin-eyebrow">APEX GAMING · ESPACE SÉCURISÉ</p><h1>Administration</h1><p>Commandes, catalogue et accès administrateurs.</p></div><a class="btn l" href="#/">Voir la boutique</a></div>
- <div class="admin-summary"><div><b>${pending}</b><span>commandes à confirmer</span></div><div><b>${P.filter(product=>!product.disabled).length}</b><span>produits actifs</span></div><div><b>${adminAccountsLoaded?adminAccounts.length:"…"}</b><span>administrateurs</span></div></div>
+ <div class="admin-summary"><div><b>${pending}</b><span>commandes à confirmer</span></div><div><b>${P.filter(product=>!product.disabled).length}</b><span>produits actifs</span></div><div><b>${adminAccountsError?"—":adminAccountsLoaded?adminAccounts.length:"…"}</b><span>administrateurs</span></div></div>
  <section class="admin-section admin-team"><h2>Accès administrateurs</h2><p class="ld">Ajoute uniquement une personne de confiance qui a déjà créé un compte sur le site.</p><form class="admin-add-form" onsubmit="addAdminAccount(event)"><label class="f">E-mail du compte<input name="email" type="email" autocomplete="email" maxlength="320" placeholder="nom@exemple.com" required></label><button class="btn d" type="submit">Ajouter comme admin</button></form>
  ${adminAccountsLoading?`<p class="admin-note">Chargement des administrateurs…</p>`:adminAccountsError?`<p class="admin-error">Liste indisponible : ${escapeHtml(adminAccountsError)}. Vérifie que la mise à jour <code>supabase.sql</code> a été exécutée.</p><button class="btn l" type="button" onclick="refreshAdminAccounts()">Réessayer</button>`:adminAccounts.length?`<ul class="admin-account-list">${adminAccounts.map(account=>`<li><span><b>${escapeHtml(account.account_name||"Administrateur")}</b><small>${escapeHtml(account.account_email||"")}</small></span><span class="review-approved">Admin</span></li>`).join("")}</ul>`:`<p class="admin-note">Aucun administrateur listé.</p>`}</section>
  <details class="admin-panel" open><summary>Commandes à suivre <span>${orders.length} sur cet appareil</span></summary><section class="admin-section"><p class="admin-note admin-local-note">Ces commandes sont enregistrées dans ce navigateur. Elles ne représentent pas les commandes Supabase de tous les clients.</p>${orders.length?`<div class="admin-orders">${orders.map(order=>`<div class="admin-order"><div><b>${escapeHtml(order.id)}</b><small>${escapeHtml(order.name)} · ${m(order.total)}</small></div><select aria-label="Statut de la commande ${escapeHtml(order.id)}" onchange="updateOrderStatus('${escapeHtml(order.id)}',this.value)">${ORDER_STATUSES.map(status=>`<option ${status===order.status?"selected":""}>${status}</option>`).join("")}</select></div>`).join("")}<button class="btn l" type="button" onclick="exportOrders()">Exporter les commandes locales</button></section>`:`<p class="admin-note">Aucune commande locale.</p></section>`}</details>
