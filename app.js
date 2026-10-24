@@ -66,6 +66,8 @@ const total=()=>items().reduce((s,i)=>s+i.q*i.p,0);
 const style=c=>`style="--c1:${c[0]};--c2:${c[1]}"`;
 const PAGES=[["","Accueil"],["boutique","Boutique"],["commander","Comment commander"],["paiement","Paiement"],["pourquoi","Pourquoi nous"],["apropos","Qui sommes-nous"],["faq","FAQ"],["commandes","Mes commandes"]];
 const REVIEWS=[{name:"Client vérifié",text:"Commande simple et réponse rapide sur WhatsApp.",rating:5},{name:"Client vérifié",text:"Les prix sont clairs et j'ai trouvé la bonne région PSN.",rating:5},{name:"Client vérifié",text:"Le panier est pratique pour commander plusieurs cartes.",rating:4}];
+const ORDER_STATUSES=["En attente de confirmation","Paiement confirmé","En préparation","Livrée","Annulée"];
+function updateOrderStatus(id,status){const order=orders.find(o=>o.id===id);if(!order)return;order.status=status;saveOrders();toast("Statut de commande mis à jour");draw(true)}
 $("fl").innerHTML=PAGES.concat([["avis","Avis clients"],["conditions","Conditions générales"],["confidentialite","Confidentialité"],["remboursement","Remboursement"]]).map(p=>`<li><a href="#/${p[0]}">${p[1]}</a></li>`).join("");
 $("fw").href="https://wa.me/"+S.wa;$("fw").textContent="WhatsApp : "+S.phone;
 $("fi").href="https://www.instagram.com/"+S.ig;$("fi").textContent="Instagram : "+S.ig;
@@ -75,8 +77,8 @@ $("bg").onclick=()=>{const o=$("nav").classList.toggle("o");$("bg").setAttribute
 /* ===== PANIER ===== */
 function add(pi,gi,ci,face,d){
  const p=P[pi],g=p.g[gi],c=g.list[ci],k=[p.id,c.c,c.n,face].join("|");
- if(!cart[k])cart[k]={t:p.n+(g.l?" "+g.l:"")+" "+c.n,s:c.s,f:face,p:price(face*c.r),q:0};
- cart[k].q=Math.max(0,cart[k].q+d);if(!cart[k].q)delete cart[k];
+ if(!cart[k])cart[k]={productId:p.id,t:p.n+(g.l?" "+g.l:"")+" "+c.n,s:c.s,f:face,p:price(face*c.r),q:0};
+ cart[k].q=Math.min(stockFor(p.id),Math.max(0,cart[k].q+d));if(!cart[k].q)delete cart[k];
  save();draw(true);
 }
 function chg(k,d){cart[k].q=Math.max(0,cart[k].q+d);if(!cart[k].q)delete cart[k];save();draw(true)}
@@ -85,9 +87,10 @@ function send(){
  const n=$("nm").value.trim(),phone=$("phone").value.trim(),email=$("email").value.trim(),note=$("note").value.trim();
  if(!n||!phone){toast("Indique ton nom et ton numéro WhatsApp");return}
  const order="AG-"+Date.now().toString(36).toUpperCase();
- const orderItems=items().map(i=>({name:i.t,face:i.f,symbol:i.s,quantity:i.q,price:i.p}));
- orders.unshift({id:order,createdAt:new Date().toISOString(),status:"En attente de confirmation",name:n,phone,email,note,total:total(),payment:$("py").value,items:orderItems});orders=orders.slice(0,20);saveOrders();
- const t=["Bonjour Apex Gaming, je voudrais commander :","","Référence : "+order,...items().map(i=>`- ${i.q} x ${i.t} ${i.f} ${i.s} = ${m(i.q*i.p)}`),"","Total : "+m(total()),"Paiement par : "+$("py").value,"Nom : "+n,"WhatsApp : "+phone].concat(email?["Email : "+email]:[],note?["Note : "+note]:[]).join("\n");
+ const orderItems=items().map(i=>({productId:i.productId||"",name:i.t,face:i.f,symbol:i.s,quantity:i.q,price:i.p}));
+ orderItems.forEach(i=>{if(i.productId)inventory[i.productId]=Math.max(0,stockFor(i.productId)-i.quantity)});saveInventory();
+ orders.unshift({id:order,createdAt:new Date().toISOString(),status:"En attente de confirmation",name:n,phone,email,note,total:finalTotal(),discount:discount(),payment:$("py").value,items:orderItems});orders=orders.slice(0,20);saveOrders();
+ const t=["Bonjour Apex Gaming, je voudrais commander :","","Référence : "+order,...items().map(i=>`- ${i.q} x ${i.t} ${i.f} ${i.s} = ${m(i.q*i.p)}`),"",discount()?"Promotion : - "+m(discount()):"","Total : "+m(finalTotal()),"Paiement par : "+$("py").value,"Nom : "+n,"WhatsApp : "+phone].concat(email?["Email : "+email]:[],note?["Note : "+note]:[]).join("\n");
  window.open("https://wa.me/"+S.wa+"?text="+encodeURIComponent(t),"_blank");
 }
 
@@ -163,10 +166,13 @@ admin:()=>{
  admin=true;try{localStorage.setItem("apexadm","1")}catch(e){}
  return head("Administration","Gère les produits, les prix et les moyens de paiement de cette boutique.")+`<section class="sec"><div class="w">
   <div class="admin-summary"><div><b>${P.filter(p=>!p.disabled).length}</b><span>produits actifs</span></div><div><b>${Math.round(S.margin*100)} %</b><span>marge appliquée</span></div><div><b>${S.pay.length}</b><span>moyens de paiement</span></div><div><b>${orders.length}</b><span>commandes locales</span></div></div>
+  <section class="admin-section admin-stats"><h2>Statistiques</h2><div class="stats-grid"><div><b>${m(orders.filter(o=>o.status!=="Annulée").reduce((sum,o)=>sum+Number(o.total||0),0))}</b><span>chiffre d'affaires local</span></div><div><b>${orders.filter(o=>o.status==="En attente de confirmation").length}</b><span>à confirmer</span></div><div><b>${orders.filter(o=>o.status==="Livrée").length}</b><span>livrées</span></div><div><b>${orders.length?m(orders.reduce((sum,o)=>sum+Number(o.total||0),0)/orders.length):"0 $"}</b><span>panier moyen</span></div></div><p class="admin-note">Ces statistiques utilisent uniquement les commandes enregistrées dans ce navigateur.</p></section>
  <form id="adminSettings" class="admin-form" onsubmit="saveAdminSettings(event)">
  <section class="admin-section"><h2>Tarification</h2><p class="ld">La marge est appliquée au coût de chaque carte avant l’arrondi.</p><label class="f">Marge (%)<input name="margin" type="number" min="0" max="500" step="1" value="${Math.round(S.margin*100)}" required></label></section>
- <section class="admin-section"><h2>Produits</h2><p class="ld">Décoche un produit pour le masquer dans la boutique.</p><div class="admin-products">${P.map(p=>`<label class="admin-product"><input type="checkbox" name="product-${p.id}" ${p.disabled?"":"checked"}><span><b>${p.n}</b><small>${p.d}</small></span></label>`).join("")}</div></section>
+ <section class="admin-section"><h2>Produits et stock</h2><p class="ld">Masque une marque ou indique le nombre de codes disponibles.</p><div class="admin-products">${P.map(p=>`<label class="admin-product"><input type="checkbox" name="product-${p.id}" ${p.disabled?"":"checked"}><span><b>${p.n}</b><small>${p.d}</small></span><input class="stock-input" name="stock-${p.id}" type="number" min="0" max="99999" value="${stockFor(p.id)}" aria-label="Stock ${p.n}"></label>`).join("")}</div></section>
+ <section class="admin-section"><h2>Promotion</h2><p class="ld">Laisse le code vide pour désactiver les promotions.</p><div class="checkout-grid"><label class="f">Code<input name="promoCode" maxlength="20" value="${escapeHtml(promo.code||"")}" placeholder="APEX10"></label><label class="f">Réduction (%)<input name="promoPercent" type="number" min="0" max="90" step="1" value="${promo.percent||0}"></label></div></section>
  <section class="admin-section"><h2>Moyens de paiement</h2><p class="ld">Ces informations s’affichent sur la page Paiement et dans le formulaire de commande.</p><div id="adminPayments">${S.pay.map(p=>`<div class="admin-pay-row"><label class="f">Moyen<input name="payName" maxlength="40" value="${escapeHtml(p[0])}" required></label><label class="f">Numéro / identifiant<input name="payNumber" maxlength="60" value="${escapeHtml(p[1])}" required></label><button class="btn l" type="button" aria-label="Supprimer ce moyen de paiement" onclick="this.closest('.admin-pay-row').remove()">Supprimer</button></div>`).join("")}</div><button class="btn l" type="button" onclick="addPaymentRow()">+ Ajouter un moyen</button></section>
+ <section class="admin-section"><h2>Suivi des commandes</h2><p class="ld">Les commandes visibles ici sont celles enregistrées dans ce navigateur.</p>${orders.length?`<div class="admin-orders">${orders.map(o=>`<div class="admin-order"><div><b>${escapeHtml(o.id)}</b><small>${escapeHtml(o.name)} · ${m(o.total)}</small></div><select onchange="updateOrderStatus('${escapeHtml(o.id)}',this.value)">${ORDER_STATUSES.map(s=>`<option ${s===o.status?"selected":""}>${s}</option>`).join("")}</select></div>`).join("")}</div>`:`<p class="admin-note">Aucune commande locale.</p>`}</section>
  <div class="admin-actions"><button class="btn d" type="submit">Enregistrer les réglages</button><button class="btn l" type="button" onclick="exitAdmin()">Quitter l’administration</button></div>
  </form><p class="admin-note">Les modifications sont enregistrées uniquement dans le stockage local de ce navigateur. Elles ne sont pas partagées avec les visiteurs ni synchronisées avec d’autres appareils.</p>
  </div></section>`
