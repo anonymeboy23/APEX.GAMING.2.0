@@ -4,10 +4,16 @@
 const $=id=>document.getElementById(id);
 const price=c=>Math.ceil(c*(1+S.margin)/S.round)*S.round;
 const m=n=>(Number.isInteger(n)?n:n.toFixed(2))+" $";
-let cart={},admin=false;
-try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");admin=localStorage.getItem("apexadm")=="1"}catch(e){}
+let cart={},admin=false,favorites=[],shopQuery="",theme="";
+try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");admin=localStorage.getItem("apexadm")=="1";favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
 const save=()=>{try{localStorage.setItem("apexcart",JSON.stringify(cart))}catch(e){}};
+const saveFavorites=()=>{try{localStorage.setItem("apexfavorites",JSON.stringify(favorites))}catch(e){}};
 const escapeHtml=v=>String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const isFavorite=id=>favorites.includes(id);
+function toggleFavorite(id){favorites=isFavorite(id)?favorites.filter(x=>x!==id):[...favorites,id];saveFavorites();toast(isFavorite(id)?"Ajouté aux favoris":"Retiré des favoris");draw(true)}
+function toast(message){const el=$("toast");if(!el)return;el.textContent=message;el.classList.add("show");clearTimeout(window.__toast);window.__toast=setTimeout(()=>el.classList.remove("show"),2200)}
+function toggleTheme(){theme=theme=="dark"?"light":theme=="light"?"":"dark";try{localStorage.setItem("apextheme",theme)}catch(e){};applyTheme()}
+function applyTheme(){document.documentElement.dataset.theme=theme;if($("themeToggle"))$("themeToggle").textContent=theme=="dark"?"☀":theme=="light"?"☾":"◐"}
 const CONFIG_KEY="apexadminconfig";
 function loadAdminConfig(){
  try{
@@ -46,7 +52,7 @@ const items=()=>Object.values(cart);
 const count=()=>items().reduce((s,i)=>s+i.q,0);
 const total=()=>items().reduce((s,i)=>s+i.q*i.p,0);
 const style=c=>`style="--c1:${c[0]};--c2:${c[1]}"`;
-const PAGES=[["","Accueil"],["boutique","Boutique"],["commander","Comment commander"],["paiement","Paiement"],["pourquoi","Pourquoi nous"],["apropos","Qui sommes-nous"]];
+const PAGES=[["","Accueil"],["boutique","Boutique"],["commander","Comment commander"],["paiement","Paiement"],["pourquoi","Pourquoi nous"],["apropos","Qui sommes-nous"],["faq","FAQ"]];
 $("fl").innerHTML=PAGES.map(p=>`<li><a href="#/${p[0]}">${p[1]}</a></li>`).join("");
 $("fw").href="https://wa.me/"+S.wa;$("fw").textContent="WhatsApp : "+S.phone;
 $("fi").href="https://www.instagram.com/"+S.ig;$("fi").textContent="Instagram : "+S.ig;
@@ -61,9 +67,12 @@ function add(pi,gi,ci,face,d){
  save();draw(true);
 }
 function chg(k,d){cart[k].q=Math.max(0,cart[k].q+d);if(!cart[k].q)delete cart[k];save();draw(true)}
+function clearCart(){if(!count())return;if(confirm("Vider tout le panier ?")){cart={};save();draw();toast("Panier vidé")}}
 function send(){
- const n=$("nm").value.trim();
- const t=["Bonjour Apex Gaming, je voudrais commander :","",...items().map(i=>`• ${i.q} × ${i.t} ${i.f} ${i.s} = ${m(i.q*i.p)}`),"","Total : "+m(total()),"Paiement par : "+$("py").value].concat(n?["Nom : "+n]:[]).join("\n");
+ const n=$("nm").value.trim(),phone=$("phone").value.trim(),email=$("email").value.trim(),note=$("note").value.trim();
+ if(!n||!phone){toast("Indique ton nom et ton numéro WhatsApp");return}
+ const order="AG-"+Date.now().toString(36).toUpperCase();
+ const t=["Bonjour Apex Gaming, je voudrais commander :","","Référence : "+order,...items().map(i=>`- ${i.q} x ${i.t} ${i.f} ${i.s} = ${m(i.q*i.p)}`),"","Total : "+m(total()),"Paiement par : "+$("py").value,"Nom : "+n,"WhatsApp : "+phone].concat(email?["Email : "+email]:[],note?["Note : "+note]:[]).join("\n");
  window.open("https://wa.me/"+S.wa+"?text="+encodeURIComponent(t),"_blank");
 }
 
@@ -71,7 +80,8 @@ function send(){
 let sel={g:0,c:0};
 const head=(t,p,c)=>`<section class="ph" ${c?style(c):""}><div class="w"><h1>${t}</h1><p>${p}</p></div></section>`;
 const gcMini=(c,a,b,n)=>`<div class="gc mini" ${style(c)}><div class="gt"><span>Carte cadeau</span><span>${n}</span></div><div class="gf">${a}<small>${b}</small></div></div>`;
-const tiles=()=>`<div class="tiles">${P.filter(p=>!p.disabled).map(p=>`<a class="tile" href="#/p/${p.id}" ${style(p.c)}><h3>${p.n}</h3><span>${p.d} · dès ${m(price(Math.min(...p.g.flatMap(g=>g.list.map(c=>c.k[0]*c.r)))))}</span></a>`).join("")||"<p>Aucun produit disponible pour le moment.</p>"}</div>`;
+const tiles=(list=P)=>`<div class="tiles">${list.filter(p=>!p.disabled).map(p=>`<a class="tile" href="#/p/${p.id}" ${style(p.c)}><span class="tile-top"><small>${isFavorite(p.id)?"★ Favori":""}</small><button class="tile-fav" type="button" aria-label="${isFavorite(p.id)?"Retirer des favoris":"Ajouter aux favoris"}" onclick="event.preventDefault();toggleFavorite('${p.id}')">${isFavorite(p.id)?"★":"☆"}</button></span><h3>${p.n}</h3><span>${p.d} · dès ${m(price(Math.min(...p.g.flatMap(g=>g.list.map(c=>c.k[0]*c.r)))))}</span></a>`).join("")||"<p>Aucun produit disponible pour le moment.</p>"}</div>`;
+const matchingProducts=()=>P.filter(p=>!p.disabled&&(!shopQuery||[p.n,p.d,p.id].join(" ").toLowerCase().includes(shopQuery.toLowerCase())));
 const steps=`<ol class="st"><li><h3>Choisis ta carte</h3><p>Produit, région ou pays, et montant.</p></li><li><h3>Ajoute au panier</h3><p>Le prix en dollars est affiché avant de commander.</p></li><li><h3>Envoie sur WhatsApp</h3><p>Ta commande s'écrit toute seule. Tu n'as qu'à l'envoyer.</p></li><li><h3>Paie et reçois ton code</h3><p>Après confirmation du paiement, on t'envoie le code.</p></li></ol>`;
 
 const R={
@@ -84,7 +94,9 @@ ${!P.find(p=>p.id=="psn").disabled?`<section class="sec s"><div class="w"><h2>Pl
 <section class="sec"><div class="w"><h2>Comment ça marche</h2><p class="ld">Quatre étapes, sans créer de compte.</p>${steps}<p style="margin-top:22px"><a class="btn d" href="#/commander">Voir le guide</a></p></div></section>
 <section class="sec s"><div class="w"><h2>Paiements acceptés</h2><div class="ch" style="margin:14px 0 22px">${S.pay.map(p=>`<span>${escapeHtml(p[0])}</span>`).join("")}</div><a class="btn d" href="#/paiement">Détails du paiement</a></div></section>`,
 
-boutique:()=>head("Boutique","Choisis une marque pour voir ses cartes et ses prix.")+`<section class="sec"><div class="w">${tiles()}</div></section>`,
+ boutique:()=>head("Boutique","Recherche une marque, compare les régions et ajoute tes cartes au panier.")+`<section class="sec"><div class="w"><div class="shop-tools"><label class="search"><span>Rechercher</span><input type="search" value="${escapeHtml(shopQuery)}" placeholder="PlayStation, Spotify, Netflix..." oninput="shopQuery=this.value;draw(true)"></label><button class="btn l" type="button" onclick="shopQuery='';draw()">Réinitialiser</button></div>${tiles(matchingProducts())}</div></section>`,
+ favoris:()=>head("Mes favoris","Retrouve rapidement les marques que tu consultes le plus.")+`<section class="sec"><div class="w">${favorites.length?tiles(P.filter(p=>favorites.includes(p.id))):`<div class="empty"><h2>Aucun favori</h2><p>Ajoute des marques à tes favoris depuis la boutique.</p><a class="btn d" href="#/boutique">Explorer la boutique</a></div>`}</div></section>`,
+ faq:()=>head("Questions fréquentes","Les réponses essentielles avant de commander.")+`<section class="sec"><div class="w faq"><details open><summary>Combien de temps faut-il pour recevoir le code ?</summary><p>La commande est traitée après confirmation du paiement. Le délai exact est confirmé sur WhatsApp.</p></details><details><summary>Une carte PlayStation fonctionne-t-elle partout ?</summary><p>Non. La région et parfois le pays doivent correspondre à ton compte. Vérifie toujours la région avant de payer.</p></details><details><summary>Puis-je mélanger plusieurs marques ?</summary><p>Oui. Ajoute plusieurs cartes au même panier puis envoie une seule commande WhatsApp.</p></details><details><summary>Puis-je annuler une commande ?</summary><p>Contacte-nous immédiatement sur WhatsApp avant la livraison du code.</p></details><details><summary>Pourquoi le paiement se fait-il sur WhatsApp ?</summary><p>Nous confirmons manuellement la disponibilité, le montant et le moyen de paiement avant l'envoi du code.</p></details></div></section>`,
 
 p:(id,gk)=>{
  const pi=P.findIndex(p=>p.id==id&&!p.disabled);if(pi<0)return R.boutique();
@@ -93,12 +105,12 @@ p:(id,gk)=>{
  ${p.g.length>1?`<div class="tabs">${p.g.map((x,i)=>`<button class="tab" aria-pressed="${i==gi}" onclick="sel={g:${i},c:0};draw(true)">${x.l}</button>`).join("")}</div>`:""}
  ${g.list.length>1?`<div class="tabs">${g.list.map((x,i)=>`<button class="tab" aria-pressed="${i==ci}" onclick="sel.c=${i};draw(true)">${x.c} · ${x.n}</button>`).join("")}</div>`:""}
  <div class="cards">${c.k.map(f=>{const cost=f*c.r,pr=price(cost),k=[p.id,c.c,c.n,f].join("|"),q=cart[k]?cart[k].q:0;
- return `<article class="gc" ${style(g.c||p.c)}><div class="gt"><span>Carte cadeau</span><span>${c.c}</span></div><div class="gf">${f}<small>${c.s}</small></div><div class="gn">${p.n} · ${c.n}</div>
+ return `<article class="gc" ${style(g.c||p.c)}><div class="gt"><span>Carte cadeau</span><button class="heart" type="button" aria-label="Ajouter ${p.n} aux favoris" onclick="toggleFavorite('${p.id}')">${isFavorite(p.id)?"★":"☆"}</button><span>${c.c}</span></div><div class="gf">${f}<small>${c.s}</small></div><div class="gn">${p.n} · ${c.n}</div>
  <div class="gb"><div class="gp"><small>Notre prix</small>${m(pr)}</div><div class="q"><button aria-label="Retirer" onclick="add(${pi},${gi},${ci},${f},-1)">−</button><span>${q}</span><button aria-label="Ajouter" onclick="add(${pi},${gi},${ci},${f},1)">+</button></div></div>
  ${admin?`<div class="ga">Réel ${cost.toFixed(2)} $ · gain ${(pr-cost).toFixed(2)} $</div>`:""}</article>`}).join("")}</div></div>`},
 
 panier:()=>head("Mon panier","Vérifie ta commande, puis envoie-la sur WhatsApp.")+`<div class="w"><div class="cl">${count()?items().length&&Object.entries(cart).map(([k,i])=>`<div class="ln"><span>${i.t} ${i.f} ${i.s}</span><span class="q"><button aria-label="Retirer" onclick="chg('${k}',-1)">−</button><span>${i.q}</span><button aria-label="Ajouter" onclick="chg('${k}',1)">+</button></span><b>${m(i.q*i.p)}</b></div>`).join("")+`<div class="tt"><span>Total</span><span>${m(total())}</span></div>
- <label class="f">Ton nom<input id="nm" placeholder="Ex : Jean" autocomplete="name"></label><label class="f">Moyen de paiement<select id="py">${S.pay.map(p=>`<option>${escapeHtml(p[0])}</option>`).join("")}</select></label><button class="btn g" onclick="send()">Commander sur WhatsApp</button>`:`<p>Ton panier est vide. <a href="#/boutique"><b>Voir la boutique</b></a></p>`}</div></div>`,
+ <div class="checkout-grid"><label class="f">Ton nom<input id="nm" placeholder="Ex : Jean" autocomplete="name" required></label><label class="f">Ton numéro WhatsApp<input id="phone" placeholder="Ex : 0973..." autocomplete="tel" required></label><label class="f">Email (facultatif)<input id="email" type="email" placeholder="nom@email.com" autocomplete="email"></label><label class="f">Moyen de paiement<select id="py">${S.pay.map(p=>`<option>${escapeHtml(p[0])}</option>`).join("")}</select></label></div><label class="f">Note pour la commande<textarea id="note" rows="3" placeholder="Région, compte concerné ou précision..."></textarea></label><div class="checkout-actions"><button class="btn l" type="button" onclick="clearCart()">Vider le panier</button><button class="btn g" onclick="send()">Commander sur WhatsApp</button></div><p class="secure-note">Commande confirmée manuellement · paiement vérifié avant livraison du code.</p>`:`<p>Ton panier est vide. <a href="#/boutique"><b>Voir la boutique</b></a></p>`}</div></div>`,
 
 commander:()=>head("Comment commander","De la boutique à ton code, étape par étape.")+`<section class="sec"><div class="w pr"><ol class="st" style="grid-template-columns:1fr">
 <li><h3>Vérifie la région de ton compte</h3><p>Une carte américaine ne marche pas sur un compte européen. Pour PlayStation, choisis Amérique ou Europe, puis ton pays.</p></li>
@@ -143,9 +155,10 @@ function draw(keep){
  const y=scrollY,h=location.hash.replace(/^#\/?/,"").split("/"),a=h[0];
  $("main").innerHTML=(R[a]||R[""])(h[1],h[2]);
  const n=count();
- $("nav").innerHTML=PAGES.map(p=>`<a href="#/${p[0]}" ${p[0]==a||(a=="p"&&p[0]=="boutique")?'class="on"':""}>${p[1]}</a>`).join("")+`<a href="#/panier" class="${a=="panier"?"on":""}">Panier (${n})</a>`+(admin?`<a href="#/admin" class="${a=="admin"?"on":""}">Administration</a>`:"");
+ $("nav").innerHTML=PAGES.map(p=>`<a href="#/${p[0]}" ${p[0]==a||(a=="p"&&p[0]=="boutique")?'class="on"':""}>${p[1]}</a>`).join("")+`<a href="#/favoris" class="${a=="favoris"?"on":""}">Favoris (${favorites.length})</a><a href="#/panier" class="${a=="panier"?"on":""}">Panier (${n})</a>`+(admin?`<a href="#/admin" class="${a=="admin"?"on":""}">Administration</a>`:"");
  const old=document.getElementById("cb");if(old)old.remove();
  if(n&&a!="panier"){const b=document.createElement("div");b.className="bar";b.id="cb";b.innerHTML=`<span><b>${n}</b> article${n>1?"s":""} · <b>${m(total())}</b></span><a class="btn d" href="#/panier">Voir le panier</a>`;document.body.appendChild(b)}
+ applyTheme();
  if(keep)scrollTo(0,y);
 }
 addEventListener("hashchange",()=>{
