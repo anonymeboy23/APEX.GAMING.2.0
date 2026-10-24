@@ -1,5 +1,5 @@
-const CACHE = "apex-gaming-static-v1";
-const ASSETS = ["./", "./index.html", "./style.css", "./app.js", "./data.js", "./icon.svg", "./manifest.webmanifest"];
+const CACHE = "apex-gaming-static-v2";
+const ASSETS = ["./", "./index.html", "./style.css", "./app.js", "./data.js", "./supabase-config.js", "./icon.svg", "./manifest.webmanifest"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
