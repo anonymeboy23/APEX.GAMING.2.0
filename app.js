@@ -48,14 +48,19 @@ async function loadAccountData(){
   supabaseClient.from("orders").select("id,status,total,created_at,customer_name,phone,email,note,order_items(product_id,region,face_value,quantity,unit_price)").eq("customer_id",userId).order("created_at",{ascending:false})
  ]);
  if(currentUser?.id!==userId)return false;
- const failed=[profileResult.error,favoriteResult.error,orderResult.error].filter(Boolean);
- if(failed.length){accountRole=null;reportAccountError(failed[0],"Synchronisation du compte impossible");return false}
- if(profileResult.data){
+ const failures=[
+  [profileResult.error,"Lecture du profil impossible"],
+  [favoriteResult.error,"Synchronisation des favoris impossible"],
+  [orderResult.error,"Synchronisation des commandes impossible"]
+ ].filter(([error])=>error);
+ if(profileResult.error)accountRole=null;
+ else if(profileResult.data){
   profile={...profile,name:profileResult.data.name||"",phone:profileResult.data.phone||"",email:currentUser.email||""};
   accountRole=profileResult.data.role==="admin"?"admin":"customer";
  }else accountRole=null;
- favorites=(favoriteResult.data||[]).map(row=>row.product_id);
- accountOrders=(orderResult.data||[]).map(order=>({
+ if(profileResult.data)saveProfile();
+ if(!favoriteResult.error){favorites=(favoriteResult.data||[]).map(row=>row.product_id);saveFavorites()}
+ if(!orderResult.error)accountOrders=(orderResult.data||[]).map(order=>({
   id:order.id,status:order.status,total:Number(order.total),createdAt:order.created_at,
   name:order.customer_name,phone:order.phone,email:order.email,note:order.note,
   items:(order.order_items||[]).map(item=>({
@@ -63,7 +68,12 @@ async function loadAccountData(){
    face:Number(item.face_value),symbol:({US:"$",CA:"CA$",FR:"€",DE:"€",ES:"€",IT:"€",BE:"€",GB:"£"})[item.region]||"$",quantity:item.quantity,price:Number(item.unit_price)
   }))
  }));
- saveFavorites();saveProfile();accountReady=true;return true;
+ accountReady=true;
+ if(failures.length){
+  failures.forEach(([error,action])=>console.error(action,error));
+  toast(`Synchronisation partielle du compte : ${failures.map(([,action])=>action.toLowerCase()).join(", ")}.`);
+ }
+ return failures.length===0;
 }
 async function initializeAccount(){
  if(!supabaseClient)return;
@@ -277,7 +287,7 @@ const steps=`<ol class="st"><li><h3>Choisis ta carte</h3><p>Produit, région ou 
 const accountPage=()=>{
  if(!supabaseClient)return head("Compte client","La connexion au service de comptes n'est pas configurée.")+`<section class="sec"><div class="w"><div class="empty"><h2>Configuration Supabase requise</h2><p>Vérifie l'URL et la clé publique Supabase dans supabase-config.js.</p></div></div></section>`;
  if(currentUser&&!accountReady)return head("Mon compte","Chargement de tes données…")+`<section class="sec"><div class="w profile-box">Connexion à ton compte…</div></section>`;
- if(currentUser)return head("Mon compte","Ton compte est connecté et tes informations sont synchronisées.")+`<section class="sec"><div class="w profile-box account-box"><p><b>${escapeHtml(currentUser.email||"")}</b></p><p class="account-role ${isAdmin()?"admin":""}">Rôle : ${isAdmin()?"Administrateur":"Client"}</p><p class="admin-note">Tes commandes et favoris sont associés à ce compte.</p><div class="account-actions"><a class="btn d" href="#/profil">Modifier mon profil</a><a class="btn l" href="#/commandes">Mes commandes</a><button class="btn l" type="button" onclick="signOut()">Se déconnecter</button></div></div></section>`;
+ if(currentUser)return head("Mon compte","Ton compte est connecté et tes informations sont synchronisées.")+`<section class="sec"><div class="w profile-box account-box"><p><b>${escapeHtml(currentUser.email||"")}</b></p><p class="account-role ${isAdmin()?"admin":""}">Rôle : ${accountRole==="admin"?"Administrateur":accountRole==="customer"?"Client":"Non vérifié"}</p><p class="admin-note">Tes commandes et favoris sont associés à ce compte.</p><div class="account-actions"><a class="btn d" href="#/profil">Modifier mon profil</a><a class="btn l" href="#/commandes">Mes commandes</a><button class="btn l" type="button" onclick="signOut()">Se déconnecter</button></div></div></section>`;
  if(accountMode==="forgot")return head("Réinitialiser le mot de passe","Nous t'enverrons un lien si un compte correspond à cette adresse.")+`<section class="sec"><div class="w profile-box account-box"><form class="account-form" onsubmit="sendPasswordReset(event)"><label class="f">Adresse e-mail<input name="email" type="email" autocomplete="email" required></label><button class="btn d" type="submit">Envoyer le lien</button></form><button class="text-button" type="button" onclick="accountMode='login';draw()">Retour à la connexion</button></div></section>`;
  if(accountMode==="reset")return head("Choisir un nouveau mot de passe","Choisis un mot de passe d'au moins 8 caractères.")+`<section class="sec"><div class="w profile-box account-box"><form class="account-form" onsubmit="submitAuth(event)"><label class="f">Nouveau mot de passe<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button class="btn d" type="submit">Modifier le mot de passe</button></form></div></section>`;
  const signup=accountMode==="signup";
