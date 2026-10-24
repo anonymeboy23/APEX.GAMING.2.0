@@ -65,10 +65,11 @@ async function initializeAccount(){
  if(!supabaseClient)return;
  supabaseClient.auth.onAuthStateChange((event,session)=>{
   currentUser=session?.user||null;
-  if(event==="PASSWORD_RECOVERY")accountMode="reset";
+  if(event==="PASSWORD_RECOVERY"){accountMode="reset";location.hash="#/compte"}
   Promise.resolve().then(async()=>{
    if(currentUser)await loadAccountData();
    else{accountOrders=[];accountReady=true}
+   accountReady=true;
    if(location.hash==="#/compte"||location.hash==="#/profil"||location.hash==="#/commandes"||location.hash==="#/favoris")draw(true);
   });
  });
@@ -367,3 +368,4 @@ addEventListener("hashchange",()=>{
  $("nav").classList.remove("o");$("bg").setAttribute("aria-expanded","false");$("bg").setAttribute("aria-label","Ouvrir le menu");$("bg").textContent="☰";draw();scrollTo(0,0);
 });
 draw();
+initializeAccount();
