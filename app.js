@@ -30,7 +30,6 @@ async function toggleFavorite(id){
    :await supabaseClient.from("customer_favorites").insert({user_id:currentUser.id,product_id:id});
   if(result.error){favorites=wasFavorite?[...favorites,id]:favorites.filter(x=>x!==id);saveFavorites();draw(true);toast("Favori non synchronisé. Exécute la mise à jour supabase.sql.");return}
  }
- if(requestId!==adminDataRequest||currentUser?.id!==userId)return;
  toast(wasFavorite?"Retiré des favoris":"Ajouté aux favoris");
 }
 function reportAccountError(error,action){
@@ -68,7 +67,7 @@ async function loadStorefrontConfig(){
   catch(configError){console.error("Configuration de la boutique invalide",configError);toast("La configuration partagée de la boutique est invalide.")}
  }
  if(reviewError){console.error("Chargement des avis publiés impossible",reviewError);return}
- reviews=reviewData.map(review=>({id:review.id,name:review.customer_name,rating:review.rating,message:review.message,approved:true,createdAt:review.created_at}));
+ reviews=(reviewData||[]).map(review=>({id:review.id,name:review.customer_name,rating:review.rating,message:review.message,approved:true,createdAt:review.created_at}));
  draw(true);
 }
 async function loadAccountData(){
