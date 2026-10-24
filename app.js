@@ -49,7 +49,7 @@ async function loadAccountData(){
  ]);
  if(currentUser?.id!==userId)return false;
  const failed=[profileResult.error,favoriteResult.error,orderResult.error].filter(Boolean);
- if(failed.length){reportAccountError(failed[0],"Synchronisation du compte impossible");return false}
+ if(failed.length){accountRole=null;reportAccountError(failed[0],"Synchronisation du compte impossible");return false}
  if(profileResult.data){
   profile={...profile,name:profileResult.data.name||"",phone:profileResult.data.phone||"",email:currentUser.email||""};
   accountRole=profileResult.data.role==="admin"?"admin":"customer";
@@ -69,12 +69,13 @@ async function initializeAccount(){
  if(!supabaseClient)return;
  supabaseClient.auth.onAuthStateChange((event,session)=>{
   currentUser=session?.user||null;
+  accountRole=null;accountReady=false;
   if(event==="PASSWORD_RECOVERY"){accountMode="reset";location.hash="#/compte"}
   Promise.resolve().then(async()=>{
    if(currentUser)await loadAccountData();
    else{accountOrders=[];accountRole=null;accountReady=true}
    accountReady=true;
-   if(location.hash==="#/compte"||location.hash==="#/profil"||location.hash==="#/commandes"||location.hash==="#/favoris")draw(true);
+   if(location.hash==="#/compte"||location.hash==="#/profil"||location.hash==="#/commandes"||location.hash==="#/favoris"||location.hash==="#/admin")draw(true);
   });
  });
  const {data,error}=await supabaseClient.auth.getSession();
@@ -319,7 +320,7 @@ p:(id,gk)=>{
  <div class="cards">${c.k.map(f=>{const cost=f*c.r,pr=price(cost),k=[p.id,c.c,c.n,f].join("|"),q=cart[k]?cart[k].q:0,available=stockFor(p.id)>0;
  return `<article class="gc" ${style(g.c||p.c)}><div class="gt"><span>Carte cadeau</span><button class="heart" type="button" aria-label="Ajouter ${p.n} aux favoris" onclick="toggleFavorite('${p.id}')">${isFavorite(p.id)?"★":"☆"}</button><span>${c.c}</span></div><div class="gf">${f}<small>${c.s}</small></div><div class="gn">${p.n} · ${c.n}</div>
  <div class="gb"><div class="gp"><small>Notre prix</small>${m(pr)}<em class="availability">${available?"Disponible":"Rupture"}</em></div><div class="q"><button aria-label="Retirer" onclick="add(${pi},${gi},${ci},${f},-1)">−</button><span>${q}</span><button aria-label="Ajouter" ${available?"":"disabled"} onclick="add(${pi},${gi},${ci},${f},1)">+</button></div></div>
- ${admin?`<div class="ga">Réel ${cost.toFixed(2)} $ · gain ${(pr-cost).toFixed(2)} $</div>`:""}</article>`}).join("")}</div></div>`},
+ ${isAdmin()?`<div class="ga">Réel ${cost.toFixed(2)} $ · gain ${(pr-cost).toFixed(2)} $</div>`:""}</article>`}).join("")}</div></div>`},
 
  panier:()=>head("Mon panier","Vérifie ta commande, puis envoie-la sur WhatsApp.")+`<div class="w"><div class="cl">${count()?items().length&&Object.entries(cart).map(([k,i])=>`<div class="ln"><span>${i.t} ${i.f} ${i.s}</span><span class="q"><button aria-label="Retirer" onclick="chg('${k}',-1)">−</button><span>${i.q}</span><button aria-label="Ajouter" onclick="chg('${k}',1)">+</button></span><b>${m(i.q*i.p)}</b></div>`).join("")+`<div class="promo-box"><label class="f">Code promotionnel<input id="promoCode" placeholder="Ex : APEX10"></label><button class="btn l" type="button" onclick="applyPromo()">Appliquer</button></div>${discount()?`<div class="discount-line"><span>Promotion (${promo.percent} %)</span><b>- ${m(discount())}</b></div>`:""}<div class="tt"><span>Total</span><span>${m(finalTotal())}</span></div>
  <div class="checkout-grid"><label class="f">Ton nom<input id="nm" value="${escapeHtml(profile.name)}" placeholder="Ex : Jean" autocomplete="name" required></label><label class="f">Ton numéro WhatsApp<input id="phone" value="${escapeHtml(profile.phone)}" placeholder="Ex : 0973..." autocomplete="tel" required></label><label class="f">Email (facultatif)<input id="email" type="email" value="${escapeHtml(profile.email)}" placeholder="nom@email.com" autocomplete="email"></label><label class="f">Moyen de paiement<select id="py">${S.pay.map(p=>`<option>${escapeHtml(p[0])}</option>`).join("")}</select></label></div><label class="f">Note pour la commande<textarea id="note" rows="3" placeholder="Région, compte concerné ou précision..."></textarea></label><div class="checkout-actions"><button class="btn l" type="button" onclick="clearCart()">Vider le panier</button><button class="btn g" onclick="send()">Commander sur WhatsApp</button></div><p class="secure-note">Commande confirmée manuellement · paiement vérifié avant livraison du code.</p>`:`<p>Ton panier est vide. <a href="#/boutique"><b>Voir la boutique</b></a></p>`}</div></div>`,
