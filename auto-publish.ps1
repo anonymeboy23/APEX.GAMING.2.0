@@ -9,7 +9,7 @@ Set-Location $root
 # Liste volontairement limitée : aucun secret ou fichier système ne sera ajouté.
 $trackedFiles = @(
   "app.js", "data.js", "index.html", "style.css", "_headers", "robots.txt", "wrangler.toml", "auto-publish.ps1", "manifest.webmanifest", "icon.svg", "sw.js",
-  ".github/workflows/deploy-cloudflare.yml", "schema.sql", "docs/backend-architecture.md",
+  ".github/workflows/deploy-cloudflare.yml", "schema.sql", "docs/backend-architecture.md", "vendor/supabase.js", "vendor/SUPABASE-LICENSE.txt",
       "functions/api/health.js", "functions/api/orders.js", "functions/api/orders/[id].js", "functions/api/catalog.js", "functions/api/admin/orders.js", "functions/api/admin/summary.js", "schema.sql", "seed.sql", "supabase.sql", "supabase-config.js", "scripts/smoke-check.mjs", "docs/production-checklist.md"
 )
 
