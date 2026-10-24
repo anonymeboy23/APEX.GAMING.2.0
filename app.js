@@ -401,7 +401,8 @@ apropos:()=>head("Qui sommes-nous","Apex Gaming, boutique de cartes cadeaux num�
 <h2>Notre façon de travailler</h2><p>Le site affiche les prix. La commande se termine par une vraie conversation sur WhatsApp : on confirme, tu paies, on t'envoie ton code.</p>
 <h2>Nous contacter</h2><p>WhatsApp : <a href="https://wa.me/${S.wa}" target="_blank" rel="noopener"><b>${S.phone}</b></a><br>Instagram : <b>${S.ig}</b><br>Snapchat : <b>${S.sn}</b></p></div></section>`,
 
-admin:()=>{
+admin:()=>adminPage(),
+legacyAdmin:()=>{
  return head("Administration","Gère les produits, les prix et les moyens de paiement de cette boutique.")+`<section class="sec"><div class="w">
   <div class="admin-summary"><div><b>${P.filter(p=>!p.disabled).length}</b><span>produits actifs</span></div><div><b>${Math.round(S.margin*100)} %</b><span>marge appliquée</span></div><div><b>${S.pay.length}</b><span>moyens de paiement</span></div><div><b>${orders.length}</b><span>commandes locales</span></div></div>
   <section class="admin-section admin-stats"><h2>Statistiques</h2><div class="stats-grid"><div><b>${m(orders.filter(o=>o.status!=="Annulée").reduce((sum,o)=>sum+Number(o.total||0),0))}</b><span>chiffre d'affaires local</span></div><div><b>${orders.filter(o=>o.status==="En attente de confirmation").length}</b><span>à confirmer</span></div><div><b>${orders.filter(o=>o.status==="Livrée").length}</b><span>livrées</span></div><div><b>${orders.length?m(orders.reduce((sum,o)=>sum+Number(o.total||0),0)/orders.length):"0 $"}</b><span>panier moyen</span></div></div><p class="admin-note">Ces statistiques utilisent uniquement les commandes enregistrées dans ce navigateur.</p></section>
