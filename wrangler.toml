@@ -1,2 +1,8 @@
 name = "apex-gaming"
 pages_build_output_dir = "."
+
+# When D1 is created, add its real binding here:
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "apex-gaming-db"
+# database_id = "<D1_DATABASE_ID>"

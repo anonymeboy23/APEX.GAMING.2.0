@@ -9,7 +9,8 @@ Set-Location $root
 # Liste volontairement limitée : aucun secret ou fichier système ne sera ajouté.
 $trackedFiles = @(
   "app.js", "data.js", "index.html", "style.css", "_headers", "wrangler.toml", "auto-publish.ps1",
-  ".github/workflows/deploy-cloudflare.yml"
+  ".github/workflows/deploy-cloudflare.yml", "schema.sql", "docs/backend-architecture.md",
+  "functions/api/health.js", "functions/api/orders.js"
 )
 
 function Get-Snapshot {
