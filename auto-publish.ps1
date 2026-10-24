@@ -26,9 +26,25 @@ function Get-Snapshot {
   return ($parts -join "`n")
 }
 
+function Publish-Changes {
+  git add -- $trackedFiles
+  $pending = git status --short -- $trackedFiles
+  if (-not $pending) { return }
+
+  $message = "Mise à jour automatique du site - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+  git commit -m $message
+  git push origin main
+  Write-Host "Site envoyé sur GitHub. Cloudflare peut maintenant le redéployer."
+}
+
 $lastSnapshot = Get-Snapshot
 Write-Host "Publication automatique active. Ctrl+C pour arrêter."
 Write-Host "Un commit sera créé après $DelaySeconds secondes sans nouvelle sauvegarde."
+if (git status --short -- $trackedFiles) {
+  Write-Host "Changements existants détectés. Publication initiale..."
+  Publish-Changes
+  $lastSnapshot = Get-Snapshot
+}
 
 while ($true) {
   Start-Sleep -Seconds 3
@@ -41,12 +57,6 @@ while ($true) {
 
   if ((Get-Snapshot) -ne $lastSnapshot) { continue }
 
-  git add -- $trackedFiles
-  $pending = git status --short -- $trackedFiles
-  if (-not $pending) { continue }
-
-  $message = "Mise à jour automatique du site - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
-  git commit -m $message
-  git push origin main
-  Write-Host "Site envoyé sur GitHub. Cloudflare peut maintenant le redéployer."
+  Publish-Changes
+  $lastSnapshot = Get-Snapshot
 }
