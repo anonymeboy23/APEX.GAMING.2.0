@@ -1,6 +1,6 @@
 # Apex Gaming backend architecture
 
-The site uses Supabase as the single source of truth for customer accounts, favorites, orders, reviews, catalog availability, inventory, promotions, and store settings. Cloudflare Pages hosts the static frontend; it does not require D1 for these workflows.
+The site uses Supabase as the single source of truth for customer accounts, favorites, orders, reviews, product availability, inventory, promotions, and store settings. The product definitions, regions, and denomination lists remain static in `data.js`; the admin controls whether a product is active and how much stock it has. Cloudflare Pages hosts the static frontend; it does not require D1 for these workflows.
 
 The browser uses only the public Supabase key in `supabase-config.js`. Never put a Supabase `service_role` key in the frontend. Supabase RLS and `SECURITY DEFINER` RPCs enforce administrator access.
 
@@ -15,7 +15,7 @@ The browser uses only the public Supabase key in `supabase-config.js`. Never put
 ## Data flows
 
 - Every order is written to Supabase before the WhatsApp link is opened. The order RPC validates product availability and reserves stock atomically; a failed save prevents opening the order message.
-- Admin settings and product inventory are saved transactionally to Supabase and loaded by the public store on every visit.
+- Admin settings and product availability/inventory are saved transactionally to Supabase and loaded by the public store on every visit. Stock starts at zero until an administrator sets quantities.
 - Guest order lookup uses the order reference and phone number. Customer accounts see only their own orders; administrators can manage all orders.
 - Reviews are stored centrally and require administrator approval before appearing publicly.
 

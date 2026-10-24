@@ -1,45 +1,37 @@
 # Checklist de mise en production
 
-## 1. Cloudflare
+## 1. Cloudflare Pages
 
 - Créer un projet Pages nommé `apex-gaming`.
-- Créer une base D1 nommée `apex-gaming-db`.
-- Ajouter le binding `DB` dans `wrangler.toml` avec le vrai `database_id`.
-- Ajouter le secret `ADMIN_API_TOKEN` dans les variables secrètes Cloudflare.
 - Ajouter `CLOUDFLARE_API_TOKEN` et `CLOUDFLARE_ACCOUNT_ID` dans les secrets GitHub Actions.
 
-## 2. Données
+## 2. Supabase
 
-Depuis la racine du projet :
+1. Exécuter le fichier `supabase.sql` à jour dans Supabase > SQL Editor.
+2. Vérifier que `supabase-config.js` contient l'URL du projet et la clé publique (`anon`/publishable), jamais la clé `service_role`.
+3. Dans Authentication > URL Configuration, définir l'URL HTTPS de Cloudflare Pages comme Site URL et l'ajouter aux Redirect URLs.
+4. Créer et confirmer un compte, puis lui attribuer le premier rôle admin via la requête documentée à la fin de `supabase.sql`.
+5. Depuis l’administration, définir le stock initial, les coordonnées de paiement, la marge et les promotions. Le stock est initialisé à zéro.
 
-```powershell
-npx wrangler d1 execute apex-gaming-db --remote --file=schema.sql
-npx wrangler d1 execute apex-gaming-db --remote --file=seed.sql
-```
-
-Pour les comptes clients, exécuter également le fichier `supabase.sql` à jour dans Supabase > SQL Editor. Dans Authentication > URL Configuration, ajouter l'URL HTTPS de Cloudflare Pages aux Redirect URLs. Supabase et D1 sont deux bases séparées et ne se synchronisent pas automatiquement.
+Les fonctions Cloudflare D1 présentes dans le dépôt correspondent à d'anciens endpoints. Elles ne sont pas nécessaires au flux principal boutique/administration, qui utilise Supabase.
 
 ## 3. Vérifications
 
 ```powershell
 node scripts/smoke-check.mjs
-npx wrangler pages dev .
 ```
 
 Tester ensuite :
 
-- `/api/health` retourne `ok: true` ;
-- `/api/catalog` retourne `D1_NOT_CONFIGURED` avant le binding, puis le catalogue après migration ;
-- `/api/orders` accepte une commande valide ;
-- `/api/admin/orders` refuse une requête sans token ;
-- `/api/orders/<reference>?phone=<numero>` retourne uniquement le statut correspondant ;
 - l'inscription par e-mail, sa confirmation et la réinitialisation de mot de passe fonctionnent sur le domaine HTTPS ;
 - un compte ne voit que son propre profil, ses favoris et ses commandes Supabase ;
+- un admin peut modifier un stock, un réglage et le statut d'une commande, puis retrouve ces changements depuis un autre navigateur ;
+- une commande ne part vers WhatsApp qu'après son enregistrement Supabase ; le stock diminue et une commande au-delà du stock disponible est refusée ;
 - le workflow GitHub valide le projet avant le déploiement.
 
 ## 4. Avant ouverture au public
 
-- Remplacer les numéros de paiement d'exemple dans `data.js`.
+- Remplacer les numéros de paiement d'exemple depuis l’administration Supabase.
 - Vérifier les prix, régions et stocks.
 - Remplacer les textes légaux par les conditions validées pour l'activité.
 - Configurer un vrai domaine et HTTPS.

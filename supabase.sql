@@ -541,8 +541,8 @@ begin
        or jsonb_typeof(v_item->'unitPrice') <> 'number'
        or (v_item->>'quantity')::numeric <> trunc((v_item->>'quantity')::numeric)
        or (v_item->>'quantity')::integer not between 1 and 100
-       or (v_item->>'faceValue')::numeric not between 0 and 1000000
-       or (v_item->>'unitPrice')::numeric not between 0 and 1000000
+       or (v_item->>'faceValue')::numeric not between 0.01 and 1000000
+       or (v_item->>'unitPrice')::numeric not between 0.01 and 1000000
        or length(v_item->>'productId') not between 1 and 40
        or length(v_item->>'region') > 10 then
       raise exception 'Invalid order item';
