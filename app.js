@@ -415,6 +415,7 @@ async function send(button){
   return;
  }
  for(const item of payload.items)inventory[item.productId]=Math.max(0,stockFor(item.productId)-item.quantity);
+ cart={};save();
  if(whatsappWindow)whatsappWindow.location.href="https://wa.me/"+S.wa+"?text="+encodeURIComponent(t);
  else toast("Commande enregistrée, mais WhatsApp a été bloqué par le navigateur.");
  draw(true);
