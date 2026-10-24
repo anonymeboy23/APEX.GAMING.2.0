@@ -422,17 +422,25 @@ legacyAdmin:()=>{
 /* ===== AFFICHAGE ET NAVIGATION ===== */
 function draw(keep){
  const y=scrollY,h=location.hash.replace(/^#\/?/,"").split("/"),a=h[0];
+ const adminView=a==="admin"&&isAdmin();
+ document.body.classList.toggle("admin-mode",adminView);
  $("main").innerHTML=a==="admin"&&!isAdmin()
   ?head("Accès réservé","Connecte-toi avec un compte administrateur pour ouvrir cette page.")+`<section class="sec"><div class="w"><div class="empty"><h2>Accès administrateur requis</h2><p>Le rôle est vérifié depuis le profil Supabase connecté.</p><a class="btn d" href="#/compte">Ouvrir mon compte</a></div></div></section>`
   :(R[a]||R[""])(h[1],h[2]);
+ const logo=document.querySelector(".logo");
+ logo.href=adminView?"#/admin":"#/";
+ logo.setAttribute("aria-label",adminView?"Espace d’administration Apex Gaming":"Apex Gaming, accueil");
+ logo.querySelector("span").innerHTML=adminView?"APEX<b>ADMIN</b>":"APEX<b>GAMING</b>";
  const n=count();
  const navPages=[...PAGES,["compte",currentUser?"Mon compte":"Connexion"]];
  if(isAdmin())navPages.push(["admin","Administration"]);
- $("nav").innerHTML=navPages.map(p=>`<a href="#/${p[0]}" ${p[0]==a||(a=="p"&&p[0]=="boutique")?'class="on"':""}>${p[1]}</a>`).join("")+`<a href="#/favoris" class="${a=="favoris"?"on":""}">Favoris (${favorites.length})</a><a href="#/panier" class="${a=="panier"?"on":""}">Panier (${n})</a>`;
+ $("nav").innerHTML=adminView?`<a href="#/admin" class="on">Tableau admin</a><a href="#/">Voir le site</a><button type="button" class="admin-nav-signout" onclick="signOut()">Se déconnecter</button>`:navPages.map(p=>`<a href="#/${p[0]}" ${p[0]==a||(a=="p"&&p[0]=="boutique")?'class="on"':""}>${p[1]}</a>`).join("")+`<a href="#/favoris" class="${a=="favoris"?"on":""}">Favoris (${favorites.length})</a><a href="#/panier" class="${a=="panier"?"on":""}">Panier (${n})</a>`;
+ $("themeToggle").hidden=adminView;$("bg").hidden=adminView;
  const old=document.getElementById("cb");if(old)old.remove();
- if(n&&a!="panier"){const b=document.createElement("div");b.className="bar";b.id="cb";b.innerHTML=`<span><b>${n}</b> article${n>1?"s":""} · <b>${m(total())}</b></span><a class="btn d" href="#/panier">Voir le panier</a>`;document.body.appendChild(b)}
+ if(n&&a!="panier"&&!adminView){const b=document.createElement("div");b.className="bar";b.id="cb";b.innerHTML=`<span><b>${n}</b> article${n>1?"s":""} · <b>${m(total())}</b></span><a class="btn d" href="#/panier">Voir le panier</a>`;document.body.appendChild(b)}
  applyTheme();
  if(keep)scrollTo(0,y);
+ if(adminView&&!adminAccountsLoaded&&!adminAccountsLoading)loadAdminAccounts();
 }
 addEventListener("hashchange",()=>{
  const h=location.hash.replace(/^#\/?/,"").split("/");
