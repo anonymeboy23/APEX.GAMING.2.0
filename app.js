@@ -9,7 +9,7 @@ const supabaseClient=window.apexSupabase;
 let currentUser=null,accountOrders=[],accountMode="login",accountReady=false,accountNotice="",accountRole=null,adminAccounts=[],adminAccountsLoaded=false,adminAccountsError="";
 try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");orders=JSON.parse(localStorage.getItem("apexorders")||"[]");reviews=JSON.parse(localStorage.getItem("apexreviews")||"[]");inventory=JSON.parse(localStorage.getItem("apexinventory")||"{}");promo=JSON.parse(localStorage.getItem("apexpromo")||'{"code":"","percent":0,"enabled":false}');profile=JSON.parse(localStorage.getItem("apexprofile")||'{"name":"","phone":"","email":""}');recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
 const isAdmin=()=>Boolean(currentUser&&accountReady&&accountRole==="admin");
-let adminOrders=[],adminReviews=[],adminDataLoaded=false,adminDataLoading=false,adminDataErrors=[],adminConfigLoaded=false;
+let adminOrders=[],adminReviews=[],adminDataLoaded=false,adminDataLoading=false,adminDataErrors=[],adminConfigLoaded=false,adminDataRequest=0;
 const save=()=>{try{localStorage.setItem("apexcart",JSON.stringify(cart))}catch(e){}};
 const saveFavorites=()=>{try{localStorage.setItem("apexfavorites",JSON.stringify(favorites))}catch(e){}};
 const saveRecent=()=>{try{localStorage.setItem("apexrecent",JSON.stringify(recentProducts))}catch(e){}};
@@ -30,6 +30,7 @@ async function toggleFavorite(id){
    :await supabaseClient.from("customer_favorites").insert({user_id:currentUser.id,product_id:id});
   if(result.error){favorites=wasFavorite?[...favorites,id]:favorites.filter(x=>x!==id);saveFavorites();draw(true);toast("Favori non synchronisé. Exécute la mise à jour supabase.sql.");return}
  }
+ if(requestId!==adminDataRequest||currentUser?.id!==userId)return;
  toast(wasFavorite?"Retiré des favoris":"Ajouté aux favoris");
 }
 function reportAccountError(error,action){
@@ -112,6 +113,7 @@ async function initializeAccount(){
   currentUser=session?.user||null;
   accountRole=null;accountReady=false;
   adminAccounts=[];adminAccountsLoaded=false;adminAccountsError="";
+  adminOrders=[];adminReviews=[];adminDataLoaded=false;adminDataLoading=false;adminDataErrors=[];adminConfigLoaded=false;adminDataRequest++;
   if(event==="PASSWORD_RECOVERY"){accountMode="reset";location.hash="#/compte"}
   Promise.resolve().then(async()=>{
    if(currentUser)await loadAccountData();
@@ -161,6 +163,7 @@ function mapStoredOrder(order){
 }
 async function loadAdminData(){
  if(!isAdmin()||adminDataLoading)return;
+ const requestId=++adminDataRequest,userId=currentUser.id;
  adminDataLoading=true;adminDataLoaded=false;adminDataErrors=[];draw(true);
  let configResult,ordersResult,reviewsResult,adminsResult;
  try{
@@ -171,6 +174,7 @@ async function loadAdminData(){
    supabaseClient.rpc("list_admin_accounts")
   ]);
  }catch(error){
+  if(requestId!==adminDataRequest||currentUser?.id!==userId)return;
   adminDataErrors.push(error?.message||"Connexion à Supabase impossible.");
   adminDataLoading=false;adminDataLoaded=true;
   if(location.hash.replace(/^#\/?/,"").split("/")[0]==="admin")draw(true);
