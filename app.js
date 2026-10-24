@@ -68,6 +68,15 @@ const total=()=>items().reduce((s,i)=>s+i.q*i.p,0);
 const style=c=>`style="--c1:${c[0]};--c2:${c[1]}"`;
 const PAGES=[["","Accueil"],["boutique","Boutique"],["commander","Comment commander"],["paiement","Paiement"],["pourquoi","Pourquoi nous"],["apropos","Qui sommes-nous"],["faq","FAQ"],["commandes","Mes commandes"],["profil","Mon profil"]];
 const REVIEWS=[{name:"Client vérifié",text:"Commande simple et réponse rapide sur WhatsApp.",rating:5},{name:"Client vérifié",text:"Les prix sont clairs et j'ai trouvé la bonne région PSN.",rating:5},{name:"Client vérifié",text:"Le panier est pratique pour commander plusieurs cartes.",rating:4}];
+const PRODUCT_INFO={
+ psn:{about:"Recharge ton compte PlayStation avec une carte adaptée à sa région.",activation:"PlayStation Store",tip:"Vérifie le pays de ton compte avant de choisir une carte."},
+ spotify:{about:"Active un abonnement Spotify Premium ou recharge ton compte musique.",activation:"Compte Spotify",tip:"Le compte doit pouvoir utiliser le pays associé à la carte."},
+ apple:{about:"Crédite Apple Music, l'App Store ou ton solde iTunes.",activation:"Apple ID",tip:"La région de ton Apple ID doit correspondre à la carte."},
+ netflix:{about:"Profite de films et séries avec une carte cadeau Netflix.",activation:"Compte Netflix",tip:"Vérifie la devise et le pays acceptés par ton compte."},
+ xbox:{about:"Achète des jeux, du Game Pass ou du contenu Xbox.",activation:"Compte Microsoft/Xbox",tip:"Utilise une région compatible avec ton compte Microsoft."},
+ steam:{about:"Ajoute du crédit à ton portefeuille Steam pour tes jeux PC.",activation:"Compte Steam",tip:"La région de ton portefeuille doit être compatible."},
+ google:{about:"Achète des applications, jeux et contenus Google Play.",activation:"Compte Google",tip:"La région Google Play doit correspondre au pays de la carte."}
+};
 const ORDER_STATUSES=["En attente de confirmation","Paiement confirmé","En préparation","Livrée","Annulée"];
 function updateOrderStatus(id,status){const order=orders.find(o=>o.id===id);if(!order)return;order.status=status;saveOrders();toast("Statut de commande mis à jour");draw(true)}
 $("fl").innerHTML=PAGES.concat([["avis","Avis clients"],["conditions","Conditions générales"],["confidentialite","Confidentialité"],["remboursement","Remboursement"]]).map(p=>`<li><a href="#/${p[0]}">${p[1]}</a></li>`).join("");
@@ -133,8 +142,8 @@ ${!P.find(p=>p.id=="psn").disabled?`<section class="sec s"><div class="w"><h2>Pl
 
 p:(id,gk)=>{
  const pi=P.findIndex(p=>p.id==id&&!p.disabled);if(pi<0)return R.boutique();
- const p=P[pi];rememberProduct(p.id);const g=p.g[sel.g]||p.g[0],c=g.list[sel.c]||g.list[0],gi=p.g.indexOf(g),ci=g.list.indexOf(c);
- return head(p.n+(g.l?" : "+g.l:""),p.d+". Les cartes ne fonctionnent que sur un compte de la même région.",g.c||p.c)+`<div class="w">
+ const p=P[pi];rememberProduct(p.id);const info=PRODUCT_INFO[p.id]||{about:p.d,activation:"Compte compatible",tip:"Vérifie la région avant de commander."};const g=p.g[sel.g]||p.g[0],c=g.list[sel.c]||g.list[0],gi=p.g.indexOf(g),ci=g.list.indexOf(c);
+ return head(p.n+(g.l?" : "+g.l:""),p.d+". Les cartes ne fonctionnent que sur un compte de la même région.",g.c||p.c)+`<div class="w"><div class="product-summary"><div><h2>${info.about}</h2><p>Activation : <b>${info.activation}</b></p></div><div class="product-tip"><b>À vérifier</b><span>${info.tip}</span></div></div>
  ${p.g.length>1?`<div class="tabs">${p.g.map((x,i)=>`<button class="tab" aria-pressed="${i==gi}" onclick="sel={g:${i},c:0};draw(true)">${x.l}</button>`).join("")}</div>`:""}
  ${g.list.length>1?`<div class="tabs">${g.list.map((x,i)=>`<button class="tab" aria-pressed="${i==ci}" onclick="sel.c=${i};draw(true)">${x.c} · ${x.n}</button>`).join("")}</div>`:""}
  <div class="cards">${c.k.map(f=>{const cost=f*c.r,pr=price(cost),k=[p.id,c.c,c.n,f].join("|"),q=cart[k]?cart[k].q:0,available=stockFor(p.id)>0;
