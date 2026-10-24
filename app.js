@@ -39,16 +39,16 @@ function orderItemName(item){
  return `${product?.n||item.product_id}${item.region?` · ${item.region}`:""}`;
 }
 async function loadAccountData(){
- if(!supabaseClient||!currentUser)return;
+ if(!supabaseClient||!currentUser)return false;
  const userId=currentUser.id;
  const [profileResult,favoriteResult,orderResult]=await Promise.all([
   supabaseClient.from("profiles").select("name,phone").eq("id",userId).maybeSingle(),
   supabaseClient.from("customer_favorites").select("product_id").eq("user_id",userId),
   supabaseClient.from("orders").select("id,status,total,created_at,customer_name,phone,email,note,order_items(product_id,region,face_value,quantity,unit_price)").eq("customer_id",userId).order("created_at",{ascending:false})
  ]);
- if(currentUser?.id!==userId)return;
+ if(currentUser?.id!==userId)return false;
  const failed=[profileResult.error,favoriteResult.error,orderResult.error].filter(Boolean);
- if(failed.length){reportAccountError(failed[0],"Synchronisation du compte impossible");return}
+ if(failed.length){reportAccountError(failed[0],"Synchronisation du compte impossible");return false}
  if(profileResult.data)profile={...profile,name:profileResult.data.name||"",phone:profileResult.data.phone||"",email:currentUser.email||""};
  favorites=(favoriteResult.data||[]).map(row=>row.product_id);
  accountOrders=(orderResult.data||[]).map(order=>({
@@ -56,10 +56,10 @@ async function loadAccountData(){
   name:order.customer_name,phone:order.phone,email:order.email,note:order.note,
   items:(order.order_items||[]).map(item=>({
    productId:item.product_id,name:orderItemName(item),region:item.region,
-   face:Number(item.face_value),symbol:"$",quantity:item.quantity,price:Number(item.unit_price)
+   face:Number(item.face_value),symbol:({US:"$",CA:"CA$",FR:"€",DE:"€",ES:"€",IT:"€",BE:"€",GB:"£"})[item.region]||"$",quantity:item.quantity,price:Number(item.unit_price)
   }))
  }));
- saveFavorites();saveProfile();accountReady=true;
+ saveFavorites();saveProfile();accountReady=true;return true;
 }
 async function initializeAccount(){
  if(!supabaseClient)return;
@@ -232,13 +232,16 @@ function send(){
 }
 async function syncOrder(payload){
  if(currentUser&&supabaseClient){
+  const {error:profileError}=await supabaseClient.from("profiles").update({name:payload.name,phone:payload.phone}).eq("id",currentUser.id);
+  if(profileError){reportAccountError(profileError,"Profil non synchronisé");return}
   const {error}=await supabaseClient.rpc("create_customer_order",{
    p_id:payload.id,p_customer_name:payload.name,p_phone:payload.phone,p_email:payload.email||null,
    p_note:payload.note||null,p_total:payload.total,
    p_items:payload.items.map(item=>({productId:item.productId,region:item.region,faceValue:item.faceValue,quantity:item.quantity,unitPrice:item.unitPrice}))
   });
   if(error){reportAccountError(error,"WhatsApp est prêt, mais la commande n'a pas été synchronisée");return}
-  await loadAccountData();draw(true);toast("Commande enregistrée dans ton compte.");return;
+  if(await loadAccountData()){draw(true);toast("Commande enregistrée dans ton compte.");}
+  return;
  }
  try{
   const response=await fetch("/api/orders",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
@@ -261,6 +264,7 @@ const matchingProducts=()=>{let list=P.filter(p=>!p.disabled&&(!shopQuery||[p.n,
 const steps=`<ol class="st"><li><h3>Choisis ta carte</h3><p>Produit, région ou pays, et montant.</p></li><li><h3>Ajoute au panier</h3><p>Le prix en dollars est affiché avant de commander.</p></li><li><h3>Envoie sur WhatsApp</h3><p>Ta commande s'écrit toute seule. Tu n'as qu'à l'envoyer.</p></li><li><h3>Paie et reçois ton code</h3><p>Après confirmation du paiement, on t'envoie le code.</p></li></ol>`;
 const accountPage=()=>{
  if(!supabaseClient)return head("Compte client","La connexion au service de comptes n'est pas configurée.")+`<section class="sec"><div class="w"><div class="empty"><h2>Configuration Supabase requise</h2><p>Vérifie l'URL et la clé publique Supabase dans supabase-config.js.</p></div></div></section>`;
+ if(currentUser&&!accountReady)return head("Mon compte","Chargement de tes données…")+`<section class="sec"><div class="w profile-box">Connexion à ton compte…</div></section>`;
  if(currentUser)return head("Mon compte","Ton compte est connecté et tes informations sont synchronisées.")+`<section class="sec"><div class="w profile-box account-box"><p><b>${escapeHtml(currentUser.email||"")}</b></p><p class="admin-note">Tes commandes et favoris sont associés à ce compte.</p><div class="account-actions"><a class="btn d" href="#/profil">Modifier mon profil</a><a class="btn l" href="#/commandes">Mes commandes</a><button class="btn l" type="button" onclick="signOut()">Se déconnecter</button></div></div></section>`;
  if(accountMode==="forgot")return head("Réinitialiser le mot de passe","Nous t'enverrons un lien si un compte correspond à cette adresse.")+`<section class="sec"><div class="w profile-box account-box"><form class="account-form" onsubmit="sendPasswordReset(event)"><label class="f">Adresse e-mail<input name="email" type="email" autocomplete="email" required></label><button class="btn d" type="submit">Envoyer le lien</button></form><button class="text-button" type="button" onclick="accountMode='login';draw()">Retour à la connexion</button></div></section>`;
  if(accountMode==="reset")return head("Choisir un nouveau mot de passe","Choisis un mot de passe d'au moins 8 caractères.")+`<section class="sec"><div class="w profile-box account-box"><form class="account-form" onsubmit="submitAuth(event)"><label class="f">Nouveau mot de passe<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button class="btn d" type="submit">Modifier le mot de passe</button></form></div></section>`;
