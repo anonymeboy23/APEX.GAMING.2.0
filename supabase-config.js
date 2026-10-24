@@ -2,8 +2,8 @@
    Remplace uniquement les deux valeurs ci-dessous.
    Ne mets JAMAIS la clé service_role ici : elle doit rester côté serveur. */
 window.APEX_SUPABASE_CONFIG = {
-  url: "https://TON-PROJET.supabase.co",
-  anonKey: "TA_CLE_PUBLIQUE_ANON"
+  url: "https://fhzkgjbcmxxlznolbsyq.supabase.co",
+  anonKey: "sb_publishable_GCJqySzbDyRLN3LoVE11rg_yrje5Rxm"
 };
 
 window.apexSupabase = null;
