@@ -14,7 +14,7 @@ The browser uses only the public Supabase key in `supabase-config.js`. Never put
 
 ## Data flows
 
-- Every order is written to Supabase before the WhatsApp link is opened; its status and order items are managed in Supabase.
+- Every order is written to Supabase before the WhatsApp link is opened. The order RPC validates product availability and reserves stock atomically; a failed save prevents opening the order message.
 - Admin settings and product inventory are saved transactionally to Supabase and loaded by the public store on every visit.
 - Guest order lookup uses the order reference and phone number. Customer accounts see only their own orders; administrators can manage all orders.
 - Reviews are stored centrally and require administrator approval before appearing publicly.

@@ -21,6 +21,23 @@ for (const table of ["customers", "products", "inventory", "promotions", "orders
   }
 }
 
+const supabaseSchema = readFileSync("supabase.sql", "utf8");
+for (const requirement of [
+  "create or replace function public.create_customer_order(",
+  "and i.quantity >= v_quantity",
+  "Product unavailable or out of stock",
+  "Order total is outside the allowed discount range"
+]) {
+  if (!supabaseSchema.includes(requirement)) {
+    throw new Error(`Règle Supabase absente : ${requirement}`);
+  }
+}
+
+const app = readFileSync("app.js", "utf8");
+if (!app.includes("const saved=await syncOrder(payload)") || !app.includes("if(!saved)")) {
+  throw new Error("WhatsApp ne doit s’ouvrir qu’après l’enregistrement Supabase de la commande");
+}
+
 const { onRequestGet: adminOrdersGet } = await import("../functions/api/admin/orders.js");
 const unauthorized = await adminOrdersGet({
   request: new Request("https://example.test/api/admin/orders"),

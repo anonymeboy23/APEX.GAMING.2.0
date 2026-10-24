@@ -504,6 +504,10 @@ as $$
 declare
   v_user_id uuid := auth.uid();
   v_item jsonb;
+  v_product_id text;
+  v_quantity integer;
+  v_stock_updated integer;
+  v_subtotal numeric := 0;
 begin
   if p_id is null or p_customer_name is null or p_phone is null
      or p_total is null or p_items is null
@@ -535,20 +539,43 @@ begin
        or jsonb_typeof(v_item->'faceValue') <> 'number'
        or jsonb_typeof(v_item->'quantity') <> 'number'
        or jsonb_typeof(v_item->'unitPrice') <> 'number'
+       or (v_item->>'quantity')::numeric <> trunc((v_item->>'quantity')::numeric)
        or (v_item->>'quantity')::integer not between 1 and 100
        or (v_item->>'faceValue')::numeric not between 0 and 1000000
        or (v_item->>'unitPrice')::numeric not between 0 and 1000000
+       or length(v_item->>'productId') not between 1 and 40
        or length(v_item->>'region') > 10 then
       raise exception 'Invalid order item';
     end if;
+    v_product_id := v_item->>'productId';
+    v_quantity := (v_item->>'quantity')::integer;
+
+    update public.inventory i
+      set quantity = i.quantity - v_quantity, updated_at = now()
+      from public.products p
+      where i.product_id = v_product_id
+        and p.id = i.product_id
+        and p.active
+        and i.quantity >= v_quantity;
+    get diagnostics v_stock_updated = row_count;
+    if v_stock_updated <> 1 then
+      raise exception 'Product unavailable or out of stock: %', v_product_id;
+    end if;
+
+    v_subtotal := v_subtotal
+      + (v_item->>'unitPrice')::numeric * v_quantity;
     insert into public.order_items (
       order_id, product_id, region, face_value, quantity, unit_price
     ) values (
-      p_id, v_item->>'productId', v_item->>'region',
+      p_id, v_product_id, v_item->>'region',
       (v_item->>'faceValue')::numeric, (v_item->>'quantity')::integer,
       (v_item->>'unitPrice')::numeric
     );
   end loop;
+
+  if p_total > v_subtotal or p_total < v_subtotal * 0.10 then
+    raise exception 'Order total is outside the allowed discount range';
+  end if;
 
   return p_id;
 end;
