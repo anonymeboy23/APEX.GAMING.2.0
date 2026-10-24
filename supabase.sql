@@ -263,13 +263,15 @@ begin
   if v_user_id is null then
     raise exception 'Sign in is required to save an account order';
   end if;
-  if p_id !~ '^AG-[A-Z0-9]+$'
+  if p_id is null or p_customer_name is null or p_phone is null
+     or p_total is null or p_items is null
+     or p_id !~ '^AG-[A-Z0-9]+$'
      or length(p_customer_name) not between 2 and 120
      or length(p_phone) not between 6 and 40
      or length(coalesce(p_email, '')) > 160
      or length(coalesce(p_note, '')) > 1000
      or p_total < 0 or p_total > 1000000
-     or jsonb_typeof(p_items) <> 'array'
+     or jsonb_typeof(p_items) is distinct from 'array'
      or jsonb_array_length(p_items) not between 1 and 50 then
     raise exception 'Invalid order details';
   end if;
