@@ -62,6 +62,7 @@ create table if not exists public.orders (
   phone text not null,
   email text,
   note text,
+  payment_method text,
   total numeric(12,2) not null check (total >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -487,6 +488,7 @@ create or replace function public.create_customer_order(
   p_email text,
   p_note text,
   p_total numeric,
+  p_payment_method text,
   p_items jsonb
 )
 returns text
@@ -504,6 +506,7 @@ begin
      or length(p_phone) not between 6 and 40
      or length(coalesce(p_email, '')) > 160
      or length(coalesce(p_note, '')) > 1000
+     or length(coalesce(p_payment_method, '')) > 40
      or p_total < 0 or p_total > 1000000
      or jsonb_typeof(p_items) is distinct from 'array'
      or jsonb_array_length(p_items) not between 1 and 50 then
@@ -511,10 +514,11 @@ begin
   end if;
 
   insert into public.orders (
-    id, customer_id, status, customer_name, phone, email, note, total
+    id, customer_id, status, customer_name, phone, email, note, payment_method, total
   ) values (
     p_id, v_user_id, 'En attente de confirmation',
-    p_customer_name, p_phone, nullif(p_email, ''), nullif(p_note, ''), p_total
+    p_customer_name, p_phone, nullif(p_email, ''), nullif(p_note, ''),
+    nullif(p_payment_method, ''), p_total
   );
 
   for v_item in select value from jsonb_array_elements(p_items)
@@ -544,8 +548,9 @@ begin
 end;
 $$;
 
-revoke all on function public.create_customer_order(text, text, text, text, text, numeric, jsonb) from public;
-grant execute on function public.create_customer_order(text, text, text, text, text, numeric, jsonb) to anon, authenticated;
+drop function if exists public.create_customer_order(text, text, text, text, text, numeric, jsonb);
+revoke all on function public.create_customer_order(text, text, text, text, text, numeric, text, jsonb) from public;
+grant execute on function public.create_customer_order(text, text, text, text, text, numeric, text, jsonb) to anon, authenticated;
 
 -- Données initiales du catalogue.
 insert into public.products (id, name, description, active) values
