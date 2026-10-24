@@ -551,3 +551,4 @@ addEventListener("hashchange",()=>{
 });
 draw();
 initializeAccount();
+loadStorefrontConfig();
