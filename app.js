@@ -121,22 +121,6 @@ async function initializeAccount(){
  else accountRole=null;
  accountReady=true;draw(true);
 }
-async function loadAdminAccounts(){
- if(!isAdmin()||adminAccountsLoading)return;
- adminAccountsLoading=true;adminAccountsError="";
- try{
-  const {data,error}=await supabaseClient.rpc("list_admin_accounts");
-  if(error)throw error;
-  adminAccounts=data||[];
- }catch(error){
-  adminAccountsError=error?.message||"Erreur Supabase";
-  console.error("Chargement des administrateurs impossible",error);
- }finally{
-  adminAccountsLoading=false;adminAccountsLoaded=true;
- }
- if(!isAdmin())return;
- if(location.hash.replace(/^#\/?/,"").split("/")[0]==="admin")draw(true);
-}
 async function addAdminAccount(event){
  event.preventDefault();
  if(!isAdmin()||!supabaseClient){toast("Action réservée à un administrateur connecté.");return}
@@ -295,36 +279,6 @@ async function saveCustomerProfile(event){
 function submitReview(event){event.preventDefault();const form=event.currentTarget,name=form.elements.reviewName.value.trim(),message=form.elements.reviewMessage.value.trim(),rating=Number(form.elements.reviewRating.value);if(name.length<2||message.length<8||rating<1||rating>5){toast("Complète ton avis correctement");return}reviews.unshift({name,message,rating,approved:false,createdAt:new Date().toISOString()});reviews=reviews.slice(0,30);saveReviews();toast("Merci, ton avis sera vérifié");form.reset();draw(true)}
 function moderateReview(index,approved){if(!reviews[index])return;if(approved)reviews[index].approved=true;else reviews.splice(index,1);saveReviews();toast(approved?"Avis publié":"Avis supprimé");draw(true)}
 async function lookupOrder(){const id=$("lookupId").value.trim().toUpperCase(),phone=$("lookupPhone").value.trim();if(!id||!phone){toast("Indique la référence et le numéro WhatsApp");return}try{const response=await fetch(`/api/orders/${encodeURIComponent(id)}?phone=${encodeURIComponent(phone)}`);const result=await response.json();if(!response.ok)throw new Error(result.error);orderLookup=result.order;draw(true)}catch(e){orderLookup=null;toast(e.message==="D1_NOT_CONFIGURED"?"Le suivi invité n'est pas encore configuré. Crée un compte pour retrouver tes commandes.":"Commande introuvable ou suivi indisponible")}}
-const CONFIG_KEY="apexadminconfig";
-function loadAdminConfig(){
- try{
-  const saved=JSON.parse(localStorage.getItem(CONFIG_KEY)||"null");
-  if(!saved||typeof saved!=="object")return;
-  if(Number.isFinite(saved.margin)&&saved.margin>=0&&saved.margin<=5)S.margin=saved.margin;
-  if(Array.isArray(saved.pay)&&saved.pay.length&&saved.pay.every(p=>Array.isArray(p)&&typeof p[0]=="string"&&typeof p[1]=="string"))S.pay=saved.pay;
-  if(Array.isArray(saved.disabledProducts))P.forEach(p=>p.disabled=saved.disabledProducts.includes(p.id));
- }catch(e){}
-}
-loadAdminConfig();
-function persistAdminConfig(){
- try{localStorage.setItem(CONFIG_KEY,JSON.stringify({margin:S.margin,pay:S.pay,disabledProducts:P.filter(p=>p.disabled).map(p=>p.id)}))}
- catch(e){alert("Impossible d’enregistrer les réglages dans ce navigateur.");}
-}
-function saveAdminSettings(event){
- event.preventDefault();
- const form=event.currentTarget,margin=Number(form.elements.margin.value)/100;
- const rows=[...form.querySelectorAll(".admin-pay-row")];
- const pay=rows.map(row=>[row.querySelector('[name="payName"]').value.trim(),row.querySelector('[name="payNumber"]').value.trim()]);
- if(!Number.isFinite(margin)||margin<0||margin>5){alert("La marge doit être comprise entre 0 et 500 %.");return}
- if(!pay.length||pay.some(p=>!p[0]||!p[1])){alert("Garde au moins un moyen de paiement et complète tous les champs.");return}
- if(pay.some(p=>p[0].length>40||p[1].length>60)){alert("Les noms sont limités à 40 caractères et les numéros à 60.");return}
- S.margin=margin;S.pay=pay;
- P.forEach(p=>{p.disabled=!form.querySelector(`[name="product-${p.id}"]`).checked;const field=form.querySelector(`[name="stock-${p.id}"]`);if(field)inventory[p.id]=Math.max(0,Math.floor(Number(field.value)||0))});
- const promoCode=form.elements.promoCode.value.trim().toUpperCase(),promoPercent=Number(form.elements.promoPercent.value)||0;
- if(promoPercent<0||promoPercent>90){alert("La promotion doit être comprise entre 0 et 90 %.");return}
- promo={code:promoCode,percent:promoPercent,enabled:Boolean(promoCode&&promoPercent)};appliedPromo="";
- saveInventory();savePromo();persistAdminConfig();toast("Réglages enregistrés");draw();
-}
 function addPaymentRow(){
  const list=$("adminPayments"),row=document.createElement("div");
  row.className="admin-pay-row";
@@ -332,7 +286,7 @@ function addPaymentRow(){
  list.appendChild(row);
 }
 function exitAdmin(){location.hash="#/";}
-function refreshAdminAccounts(){adminAccountsLoaded=false;loadAdminAccounts()}
+function refreshAdminAccounts(){adminDataLoaded=false;loadAdminData()}
 const items=()=>Object.values(cart);
 const count=()=>items().reduce((s,i)=>s+i.q,0);
 const total=()=>items().reduce((s,i)=>s+i.q*i.p,0);
