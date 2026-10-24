@@ -143,7 +143,7 @@ async function saveCustomerProfile(event){
 }
 function submitReview(event){event.preventDefault();const form=event.currentTarget,name=form.elements.reviewName.value.trim(),message=form.elements.reviewMessage.value.trim(),rating=Number(form.elements.reviewRating.value);if(name.length<2||message.length<8||rating<1||rating>5){toast("Complète ton avis correctement");return}reviews.unshift({name,message,rating,approved:false,createdAt:new Date().toISOString()});reviews=reviews.slice(0,30);saveReviews();toast("Merci, ton avis sera vérifié");form.reset();draw(true)}
 function moderateReview(index,approved){if(!reviews[index])return;if(approved)reviews[index].approved=true;else reviews.splice(index,1);saveReviews();toast(approved?"Avis publié":"Avis supprimé");draw(true)}
-async function lookupOrder(){const id=$("lookupId").value.trim().toUpperCase(),phone=$("lookupPhone").value.trim();if(!id||!phone){toast("Indique la référence et le numéro WhatsApp");return}try{const response=await fetch(`/api/orders/${encodeURIComponent(id)}?phone=${encodeURIComponent(phone)}`);const result=await response.json();if(!response.ok)throw new Error(result.error);orderLookup=result.order;draw(true)}catch(e){orderLookup=null;toast("Commande introuvable ou suivi indisponible")}}
+async function lookupOrder(){const id=$("lookupId").value.trim().toUpperCase(),phone=$("lookupPhone").value.trim();if(!id||!phone){toast("Indique la référence et le numéro WhatsApp");return}try{const response=await fetch(`/api/orders/${encodeURIComponent(id)}?phone=${encodeURIComponent(phone)}`);const result=await response.json();if(!response.ok)throw new Error(result.error);orderLookup=result.order;draw(true)}catch(e){orderLookup=null;toast(e.message==="D1_NOT_CONFIGURED"?"Le suivi invité n'est pas encore configuré. Crée un compte pour retrouver tes commandes.":"Commande introuvable ou suivi indisponible")}}
 const CONFIG_KEY="apexadminconfig";
 function loadAdminConfig(){
  try{
@@ -185,7 +185,7 @@ const items=()=>Object.values(cart);
 const count=()=>items().reduce((s,i)=>s+i.q,0);
 const total=()=>items().reduce((s,i)=>s+i.q*i.p,0);
 const style=c=>`style="--c1:${c[0]};--c2:${c[1]}"`;
-const PAGES=[["","Accueil"],["boutique","Boutique"],["commander","Comment commander"],["paiement","Paiement"],["pourquoi","Pourquoi nous"],["apropos","Qui sommes-nous"],["faq","FAQ"],["commandes","Mes commandes"],["profil","Mon profil"]];
+const PAGES=[["","Accueil"],["boutique","Boutique"],["commander","Comment commander"],["paiement","Paiement"],["pourquoi","Pourquoi nous"],["apropos","Qui sommes-nous"],["faq","FAQ"],["commandes","Mes commandes"],["profil","Mon profil"],["compte",currentUser?"Mon compte":"Connexion"]];
 const REVIEWS=[];
 const PRODUCT_INFO={
  psn:{about:"Recharge ton compte PlayStation avec une carte adaptée à sa région.",activation:"PlayStation Store",tip:"Vérifie le pays de ton compte avant de choisir une carte."},
