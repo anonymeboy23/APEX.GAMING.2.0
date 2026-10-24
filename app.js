@@ -6,7 +6,7 @@ const price=c=>Math.ceil(c*(1+S.margin)/S.round)*S.round;
 const m=n=>(Number.isInteger(n)?n:n.toFixed(2))+" $";
 let cart={},admin=false,favorites=[],orders=[],reviews=[],inventory={},promo={code:"",percent:0,enabled:false},profile={name:"",phone:"",email:""},orderLookup=null,appliedPromo="",shopQuery="",shopSort="featured",shopRegion="all",recentProducts=[],theme="";
 const supabaseClient=window.apexSupabase;
-let currentUser=null,accountOrders=[],accountMode="login",accountReady=false;
+let currentUser=null,accountOrders=[],accountMode="login",accountReady=false,accountNotice="";
 try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");admin=localStorage.getItem("apexadm")=="1";favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");orders=JSON.parse(localStorage.getItem("apexorders")||"[]");reviews=JSON.parse(localStorage.getItem("apexreviews")||"[]");inventory=JSON.parse(localStorage.getItem("apexinventory")||"{}");promo=JSON.parse(localStorage.getItem("apexpromo")||'{"code":"","percent":0,"enabled":false}');profile=JSON.parse(localStorage.getItem("apexprofile")||'{"name":"","phone":"","email":""}');recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
 const save=()=>{try{localStorage.setItem("apexcart",JSON.stringify(cart))}catch(e){}};
 const saveFavorites=()=>{try{localStorage.setItem("apexfavorites",JSON.stringify(favorites))}catch(e){}};
@@ -100,7 +100,12 @@ async function submitAuth(event){
   result=await supabaseClient.auth.signUp({email,password,options:{data:{name,phone},emailRedirectTo:location.origin+location.pathname}});
   if(result.error){toast(authMessage(result.error));return}
   if(result.data.session){toast("Compte créé et connecté.");location.hash="#/profil"}
-  else toast("Compte créé. Vérifie ta boîte e-mail pour confirmer l'inscription.");
+  else{
+   accountMode="login";
+   accountNotice="E-mail de confirmation envoyé. Clique sur le lien reçu, puis connecte-toi avec ton adresse et ton mot de passe.";
+   draw();
+   toast("Inscription envoyée. Vérifie ta boîte e-mail.");
+  }
  }else if(accountMode==="reset"){
   result=await supabaseClient.auth.updateUser({password});
   if(result.error){toast(authMessage(result.error));return}
@@ -108,6 +113,7 @@ async function submitAuth(event){
  }else{
   result=await supabaseClient.auth.signInWithPassword({email,password});
   if(result.error){toast(authMessage(result.error));return}
+  accountNotice="";
   toast("Connexion réussie.");location.hash="#/profil";
  }
 }
@@ -269,7 +275,7 @@ const accountPage=()=>{
  if(accountMode==="forgot")return head("Réinitialiser le mot de passe","Nous t'enverrons un lien si un compte correspond à cette adresse.")+`<section class="sec"><div class="w profile-box account-box"><form class="account-form" onsubmit="sendPasswordReset(event)"><label class="f">Adresse e-mail<input name="email" type="email" autocomplete="email" required></label><button class="btn d" type="submit">Envoyer le lien</button></form><button class="text-button" type="button" onclick="accountMode='login';draw()">Retour à la connexion</button></div></section>`;
  if(accountMode==="reset")return head("Choisir un nouveau mot de passe","Choisis un mot de passe d'au moins 8 caractères.")+`<section class="sec"><div class="w profile-box account-box"><form class="account-form" onsubmit="submitAuth(event)"><label class="f">Nouveau mot de passe<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button class="btn d" type="submit">Modifier le mot de passe</button></form></div></section>`;
  const signup=accountMode==="signup";
- return head(signup?"Créer un compte":"Connexion","Un compte te permet de retrouver ton profil, tes favoris et tes commandes sur tes appareils.")+`<section class="sec"><div class="w profile-box account-box"><form class="account-form" onsubmit="submitAuth(event)">${signup?`<label class="f">Nom complet<input name="name" autocomplete="name" maxlength="120" required></label><label class="f">Numéro WhatsApp<input name="phone" autocomplete="tel" maxlength="40" required></label>`:""}<label class="f">Adresse e-mail<input name="email" type="email" autocomplete="email" required></label><label class="f">Mot de passe<input name="password" type="password" minlength="8" autocomplete="${signup?"new-password":"current-password"}" required></label><button class="btn d" type="submit">${signup?"Créer mon compte":"Se connecter"}</button></form>${signup?`<p class="account-switch">Tu as déjà un compte ? <button class="text-button" type="button" onclick="accountMode='login';draw()">Se connecter</button></p>`:`<p class="account-switch"><button class="text-button" type="button" onclick="accountMode='forgot';draw()">Mot de passe oublié ?</button></p><p class="account-switch">Pas encore de compte ? <button class="text-button" type="button" onclick="accountMode='signup';draw()">Créer un compte</button></p>`}<p class="secure-note">La confirmation de l'adresse e-mail peut être demandée avant la première connexion.</p></div></section>`;
+ return head(signup?"Créer un compte":"Connexion","Un compte te permet de retrouver ton profil, tes favoris et tes commandes sur tes appareils.")+`<section class="sec"><div class="w profile-box account-box">${!signup&&accountNotice?`<p class="account-notice" role="status">${escapeHtml(accountNotice)}</p>`:""}<form class="account-form" onsubmit="submitAuth(event)">${signup?`<label class="f">Nom complet<input name="name" autocomplete="name" maxlength="120" required></label><label class="f">Numéro WhatsApp<input name="phone" autocomplete="tel" maxlength="40" required></label>`:""}<label class="f">Adresse e-mail<input name="email" type="email" autocomplete="email" required></label><label class="f">Mot de passe<input name="password" type="password" minlength="8" autocomplete="${signup?"new-password":"current-password"}" required></label><button class="btn d" type="submit">${signup?"Créer mon compte":"Se connecter"}</button></form>${signup?`<p class="account-switch">Tu as déjà un compte ? <button class="text-button" type="button" onclick="accountMode='login';draw()">Se connecter</button></p>`:`<p class="account-switch"><button class="text-button" type="button" onclick="accountMode='forgot';draw()">Mot de passe oublié ?</button></p><p class="account-switch">Pas encore de compte ? <button class="text-button" type="button" onclick="accountMode='signup';draw()">Créer un compte</button></p>`}<p class="secure-note">La confirmation de l'adresse e-mail peut être demandée avant la première connexion.</p></div></section>`;
 };
 const renderOrderCard=order=>`<article class="order-card"><div class="order-head"><b>${escapeHtml(order.id)}</b><span>${new Date(order.createdAt).toLocaleDateString("fr-FR")}</span></div><p>${escapeHtml(order.status)} · ${m(order.total)}</p><small>${(order.items||[]).map(item=>`${item.quantity} × ${escapeHtml(item.name)} ${item.face}${item.symbol}`).join(" · ")}</small></article>`;
 
