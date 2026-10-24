@@ -77,7 +77,7 @@ $("bg").onclick=()=>{const o=$("nav").classList.toggle("o");$("bg").setAttribute
 /* ===== PANIER ===== */
 function add(pi,gi,ci,face,d){
  const p=P[pi],g=p.g[gi],c=g.list[ci],k=[p.id,c.c,c.n,face].join("|");
- if(!cart[k])cart[k]={productId:p.id,t:p.n+(g.l?" "+g.l:"")+" "+c.n,s:c.s,f:face,p:price(face*c.r),q:0};
+ if(!cart[k])cart[k]={productId:p.id,region:c.c||"",t:p.n+(g.l?" "+g.l:"")+" "+c.n,s:c.s,f:face,p:price(face*c.r),q:0};
  cart[k].q=Math.min(stockFor(p.id),Math.max(0,cart[k].q+d));if(!cart[k].q)delete cart[k];
  save();draw(true);
 }
@@ -87,12 +87,15 @@ function send(){
  const n=$("nm").value.trim(),phone=$("phone").value.trim(),email=$("email").value.trim(),note=$("note").value.trim();
  if(!n||!phone){toast("Indique ton nom et ton numéro WhatsApp");return}
  const order="AG-"+Date.now().toString(36).toUpperCase();
- const orderItems=items().map(i=>({productId:i.productId||"",name:i.t,face:i.f,symbol:i.s,quantity:i.q,price:i.p}));
+ const orderItems=items().map(i=>({productId:i.productId||"",region:i.region||"",name:i.t,face:i.f,symbol:i.s,quantity:i.q,price:i.p}));
  orderItems.forEach(i=>{if(i.productId)inventory[i.productId]=Math.max(0,stockFor(i.productId)-i.quantity)});saveInventory();
  orders.unshift({id:order,createdAt:new Date().toISOString(),status:"En attente de confirmation",name:n,phone,email,note,total:finalTotal(),discount:discount(),payment:$("py").value,items:orderItems});orders=orders.slice(0,20);saveOrders();
  const t=["Bonjour Apex Gaming, je voudrais commander :","","Référence : "+order,...items().map(i=>`- ${i.q} x ${i.t} ${i.f} ${i.s} = ${m(i.q*i.p)}`),"",discount()?"Promotion : - "+m(discount()):"","Total : "+m(finalTotal()),"Paiement par : "+$("py").value,"Nom : "+n,"WhatsApp : "+phone].concat(email?["Email : "+email]:[],note?["Note : "+note]:[]).join("\n");
- window.open("https://wa.me/"+S.wa+"?text="+encodeURIComponent(t),"_blank");
+ const payload={name:n,phone,email,note,total:finalTotal(),items:orderItems.map(i=>({productId:i.productId,region:i.region,faceValue:Number(i.face),quantity:i.quantity,unitPrice:i.price}))};
+ const whatsappWindow=window.open("https://wa.me/"+S.wa+"?text="+encodeURIComponent(t),"_blank");
+ syncOrder(payload);
 }
+async function syncOrder(payload){try{const response=await fetch("/api/orders",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});if(response.ok)toast("Commande enregistrée")}catch(e){/* WhatsApp reste le canal de secours. */}}
 
 /* ===== PAGES ===== */
 let sel={g:0,c:0};
