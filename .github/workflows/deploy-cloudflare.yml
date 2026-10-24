@@ -30,4 +30,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy . --project-name=apex-gaming --branch=main --verbose
+          command: pages deploy . --project-name=apex-gaming-2-0 --branch=main
