@@ -5,6 +5,8 @@ const $=id=>document.getElementById(id);
 const price=c=>Math.ceil(c*(1+S.margin)/S.round)*S.round;
 const m=n=>(Number.isInteger(n)?n:n.toFixed(2))+" $";
 let cart={},admin=false,favorites=[],orders=[],reviews=[],inventory={},promo={code:"",percent:0,enabled:false},profile={name:"",phone:"",email:""},orderLookup=null,appliedPromo="",shopQuery="",shopSort="featured",shopRegion="all",recentProducts=[],theme="";
+const supabaseClient=window.apexSupabase;
+let currentUser=null,accountOrders=[],accountMode="login",accountReady=false;
 try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");admin=localStorage.getItem("apexadm")=="1";favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");orders=JSON.parse(localStorage.getItem("apexorders")||"[]");reviews=JSON.parse(localStorage.getItem("apexreviews")||"[]");inventory=JSON.parse(localStorage.getItem("apexinventory")||"{}");promo=JSON.parse(localStorage.getItem("apexpromo")||'{"code":"","percent":0,"enabled":false}');profile=JSON.parse(localStorage.getItem("apexprofile")||'{"name":"","phone":"","email":""}');recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
 const save=()=>{try{localStorage.setItem("apexcart",JSON.stringify(cart))}catch(e){}};
 const saveFavorites=()=>{try{localStorage.setItem("apexfavorites",JSON.stringify(favorites))}catch(e){}};
@@ -16,7 +18,111 @@ const saveProfile=()=>{try{localStorage.setItem("apexprofile",JSON.stringify(pro
 const saveReviews=()=>{try{localStorage.setItem("apexreviews",JSON.stringify(reviews))}catch(e){}};
 const escapeHtml=v=>String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const isFavorite=id=>favorites.includes(id);
-function toggleFavorite(id){favorites=isFavorite(id)?favorites.filter(x=>x!==id):[...favorites,id];saveFavorites();toast(isFavorite(id)?"Ajouté aux favoris":"Retiré des favoris");draw(true)}
+async function toggleFavorite(id){
+ const wasFavorite=isFavorite(id);
+ favorites=wasFavorite?favorites.filter(x=>x!==id):[...favorites,id];
+ saveFavorites();draw(true);
+ if(currentUser&&supabaseClient){
+  const result=wasFavorite
+   ?await supabaseClient.from("customer_favorites").delete().eq("product_id",id).eq("user_id",currentUser.id)
+   :await supabaseClient.from("customer_favorites").insert({user_id:currentUser.id,product_id:id});
+  if(result.error){favorites=wasFavorite?[...favorites,id]:favorites.filter(x=>x!==id);saveFavorites();draw(true);toast("Favori non synchronisé. Exécute la mise à jour supabase.sql.");return}
+ }
+ toast(wasFavorite?"Retiré des favoris":"Ajouté aux favoris");
+}
+function reportAccountError(error,action){
+ console.error(action,error);
+ toast(`${action} : ${error.message||"erreur Supabase"}`);
+}
+function orderItemName(item){
+ const product=P.find(p=>p.id===item.product_id);
+ return `${product?.n||item.product_id}${item.region?` · ${item.region}`:""}`;
+}
+async function loadAccountData(){
+ if(!supabaseClient||!currentUser)return;
+ const userId=currentUser.id;
+ const [profileResult,favoriteResult,orderResult]=await Promise.all([
+  supabaseClient.from("profiles").select("name,phone").eq("id",userId).maybeSingle(),
+  supabaseClient.from("customer_favorites").select("product_id").eq("user_id",userId),
+  supabaseClient.from("orders").select("id,status,total,created_at,customer_name,phone,email,note,order_items(product_id,region,face_value,quantity,unit_price)").eq("customer_id",userId).order("created_at",{ascending:false})
+ ]);
+ if(currentUser?.id!==userId)return;
+ const failed=[profileResult.error,favoriteResult.error,orderResult.error].filter(Boolean);
+ if(failed.length){reportAccountError(failed[0],"Synchronisation du compte impossible");return}
+ if(profileResult.data)profile={...profile,name:profileResult.data.name||"",phone:profileResult.data.phone||"",email:currentUser.email||""};
+ favorites=(favoriteResult.data||[]).map(row=>row.product_id);
+ accountOrders=(orderResult.data||[]).map(order=>({
+  id:order.id,status:order.status,total:Number(order.total),createdAt:order.created_at,
+  name:order.customer_name,phone:order.phone,email:order.email,note:order.note,
+  items:(order.order_items||[]).map(item=>({
+   productId:item.product_id,name:orderItemName(item),region:item.region,
+   face:Number(item.face_value),symbol:"$",quantity:item.quantity,price:Number(item.unit_price)
+  }))
+ }));
+ saveFavorites();saveProfile();accountReady=true;
+}
+async function initializeAccount(){
+ if(!supabaseClient)return;
+ supabaseClient.auth.onAuthStateChange((event,session)=>{
+  currentUser=session?.user||null;
+  if(event==="PASSWORD_RECOVERY")accountMode="reset";
+  Promise.resolve().then(async()=>{
+   if(currentUser)await loadAccountData();
+   else{accountOrders=[];accountReady=true}
+   if(location.hash==="#/compte"||location.hash==="#/profil"||location.hash==="#/commandes"||location.hash==="#/favoris")draw(true);
+  });
+ });
+ const {data,error}=await supabaseClient.auth.getSession();
+ if(error){reportAccountError(error,"Lecture de la session impossible");return}
+ currentUser=data.session?.user||null;
+ if(currentUser)await loadAccountData();
+ accountReady=true;draw(true);
+}
+function authMessage(error){
+ const messages={
+  "Invalid login credentials":"E-mail ou mot de passe incorrect.",
+  "Email not confirmed":"Confirme ton adresse e-mail avant de te connecter.",
+  "User already registered":"Un compte utilise déjà cette adresse e-mail.",
+  "Password should be at least 6 characters":"Le mot de passe est trop court.",
+  "Signup requires a valid password":"Choisis un mot de passe valide."
+ };
+ return messages[error.message]||error.message||"Une erreur est survenue.";
+}
+async function submitAuth(event){
+ event.preventDefault();
+ if(!supabaseClient){toast("Supabase n'est pas configuré.");return}
+ const form=event.currentTarget,data=new FormData(form),email=String(data.get("email")||"").trim(),password=String(data.get("password")||"");
+ let result;
+ if(accountMode==="signup"){
+  const name=String(data.get("name")||"").trim(),phone=String(data.get("phone")||"").trim();
+  if(password.length<8){toast("Choisis un mot de passe d'au moins 8 caractères.");return}
+  result=await supabaseClient.auth.signUp({email,password,options:{data:{name,phone},emailRedirectTo:location.origin+location.pathname}});
+  if(result.error){toast(authMessage(result.error));return}
+  if(result.data.session){toast("Compte créé et connecté.");location.hash="#/profil"}
+  else toast("Compte créé. Vérifie ta boîte e-mail pour confirmer l'inscription.");
+ }else if(accountMode==="reset"){
+  result=await supabaseClient.auth.updateUser({password});
+  if(result.error){toast(authMessage(result.error));return}
+  accountMode="login";toast("Mot de passe modifié.");draw();
+ }else{
+  result=await supabaseClient.auth.signInWithPassword({email,password});
+  if(result.error){toast(authMessage(result.error));return}
+  toast("Connexion réussie.");location.hash="#/profil";
+ }
+}
+async function sendPasswordReset(event){
+ event.preventDefault();
+ if(!supabaseClient){toast("Supabase n'est pas configuré.");return}
+ const email=String(new FormData(event.currentTarget).get("email")||"").trim();
+ const {error}=await supabaseClient.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+ if(error){toast(authMessage(error));return}
+ toast("Si cette adresse a un compte, un e-mail de réinitialisation a été envoyé.");
+}
+async function signOut(){
+ const {error}=await supabaseClient.auth.signOut();
+ if(error){reportAccountError(error,"Déconnexion impossible");return}
+ currentUser=null;accountOrders=[];accountReady=true;accountMode="login";toast("Déconnexion effectuée.");location.hash="#/compte";
+}
 function toast(message){const el=$("toast");if(!el)return;el.textContent=message;el.classList.add("show");clearTimeout(window.__toast);window.__toast=setTimeout(()=>el.classList.remove("show"),2200)}
 function toggleTheme(){theme=theme=="dark"?"light":theme=="light"?"":"dark";try{localStorage.setItem("apextheme",theme)}catch(e){};applyTheme()}
 function applyTheme(){document.documentElement.dataset.theme=theme;if($("themeToggle"))$("themeToggle").textContent=theme=="dark"?"☀":theme=="light"?"☾":"◐"}
@@ -25,7 +131,16 @@ const stockFor=id=>Number.isFinite(Number(inventory[id]))?Math.max(0,Number(inve
 const discount=()=>appliedPromo&&promo.enabled&&promo.code&&promo.percent>0?Math.min(total(),total()*promo.percent/100):0;
 const finalTotal=()=>total()-discount();
 function applyPromo(){const input=$("promoCode"),value=input?input.value.trim().toUpperCase():"";if(!promo.enabled||!promo.code||value!==promo.code.toUpperCase()){toast("Code promotion invalide");return}appliedPromo=value;toast("Promotion appliquée");draw(true)}
-function saveCustomerProfile(event){event.preventDefault();const form=event.currentTarget;profile={name:form.elements.name.value.trim(),phone:form.elements.phone.value.trim(),email:form.elements.email.value.trim()};saveProfile();toast("Profil enregistré");location.hash="#/"}
+async function saveCustomerProfile(event){
+ event.preventDefault();
+ const form=event.currentTarget;
+ profile={...profile,name:form.elements.name.value.trim(),phone:form.elements.phone.value.trim()};
+ if(currentUser&&supabaseClient){
+  const {error}=await supabaseClient.from("profiles").update({name:profile.name,phone:profile.phone}).eq("id",currentUser.id);
+  if(error){reportAccountError(error,"Enregistrement du profil impossible");return}
+ }
+ saveProfile();toast("Profil enregistré");draw(true);
+}
 function submitReview(event){event.preventDefault();const form=event.currentTarget,name=form.elements.reviewName.value.trim(),message=form.elements.reviewMessage.value.trim(),rating=Number(form.elements.reviewRating.value);if(name.length<2||message.length<8||rating<1||rating>5){toast("Complète ton avis correctement");return}reviews.unshift({name,message,rating,approved:false,createdAt:new Date().toISOString()});reviews=reviews.slice(0,30);saveReviews();toast("Merci, ton avis sera vérifié");form.reset();draw(true)}
 function moderateReview(index,approved){if(!reviews[index])return;if(approved)reviews[index].approved=true;else reviews.splice(index,1);saveReviews();toast(approved?"Avis publié":"Avis supprimé");draw(true)}
 async function lookupOrder(){const id=$("lookupId").value.trim().toUpperCase(),phone=$("lookupPhone").value.trim();if(!id||!phone){toast("Indique la référence et le numéro WhatsApp");return}try{const response=await fetch(`/api/orders/${encodeURIComponent(id)}?phone=${encodeURIComponent(phone)}`);const result=await response.json();if(!response.ok)throw new Error(result.error);orderLookup=result.order;draw(true)}catch(e){orderLookup=null;toast("Commande introuvable ou suivi indisponible")}}
