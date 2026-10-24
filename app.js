@@ -4,10 +4,11 @@
 const $=id=>document.getElementById(id);
 const price=c=>Math.ceil(c*(1+S.margin)/S.round)*S.round;
 const m=n=>(Number.isInteger(n)?n:n.toFixed(2))+" $";
-let cart={},admin=false,favorites=[],orders=[],reviews=[],inventory={},promo={code:"",percent:0,enabled:false},profile={name:"",phone:"",email:""},orderLookup=null,appliedPromo="",shopQuery="",shopSort="featured",shopRegion="all",recentProducts=[],theme="";
+let cart={},favorites=[],orders=[],reviews=[],inventory={},promo={code:"",percent:0,enabled:false},profile={name:"",phone:"",email:""},orderLookup=null,appliedPromo="",shopQuery="",shopSort="featured",shopRegion="all",recentProducts=[],theme="";
 const supabaseClient=window.apexSupabase;
-let currentUser=null,accountOrders=[],accountMode="login",accountReady=false,accountNotice="";
-try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");admin=localStorage.getItem("apexadm")=="1";favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");orders=JSON.parse(localStorage.getItem("apexorders")||"[]");reviews=JSON.parse(localStorage.getItem("apexreviews")||"[]");inventory=JSON.parse(localStorage.getItem("apexinventory")||"{}");promo=JSON.parse(localStorage.getItem("apexpromo")||'{"code":"","percent":0,"enabled":false}');profile=JSON.parse(localStorage.getItem("apexprofile")||'{"name":"","phone":"","email":""}');recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
+let currentUser=null,accountOrders=[],accountMode="login",accountReady=false,accountNotice="",accountRole=null;
+try{cart=JSON.parse(localStorage.getItem("apexcart")||"{}");favorites=JSON.parse(localStorage.getItem("apexfavorites")||"[]");orders=JSON.parse(localStorage.getItem("apexorders")||"[]");reviews=JSON.parse(localStorage.getItem("apexreviews")||"[]");inventory=JSON.parse(localStorage.getItem("apexinventory")||"{}");promo=JSON.parse(localStorage.getItem("apexpromo")||'{"code":"","percent":0,"enabled":false}');profile=JSON.parse(localStorage.getItem("apexprofile")||'{"name":"","phone":"","email":""}');recentProducts=JSON.parse(localStorage.getItem("apexrecent")||"[]");theme=localStorage.getItem("apextheme")||""}catch(e){}
+const isAdmin=()=>Boolean(currentUser&&accountReady&&accountRole==="admin");
 const save=()=>{try{localStorage.setItem("apexcart",JSON.stringify(cart))}catch(e){}};
 const saveFavorites=()=>{try{localStorage.setItem("apexfavorites",JSON.stringify(favorites))}catch(e){}};
 const saveRecent=()=>{try{localStorage.setItem("apexrecent",JSON.stringify(recentProducts))}catch(e){}};
@@ -42,14 +43,17 @@ async function loadAccountData(){
  if(!supabaseClient||!currentUser)return false;
  const userId=currentUser.id;
  const [profileResult,favoriteResult,orderResult]=await Promise.all([
-  supabaseClient.from("profiles").select("name,phone").eq("id",userId).maybeSingle(),
+  supabaseClient.from("profiles").select("name,phone,role").eq("id",userId).maybeSingle(),
   supabaseClient.from("customer_favorites").select("product_id").eq("user_id",userId),
   supabaseClient.from("orders").select("id,status,total,created_at,customer_name,phone,email,note,order_items(product_id,region,face_value,quantity,unit_price)").eq("customer_id",userId).order("created_at",{ascending:false})
  ]);
  if(currentUser?.id!==userId)return false;
  const failed=[profileResult.error,favoriteResult.error,orderResult.error].filter(Boolean);
  if(failed.length){reportAccountError(failed[0],"Synchronisation du compte impossible");return false}
- if(profileResult.data)profile={...profile,name:profileResult.data.name||"",phone:profileResult.data.phone||"",email:currentUser.email||""};
+ if(profileResult.data){
+  profile={...profile,name:profileResult.data.name||"",phone:profileResult.data.phone||"",email:currentUser.email||""};
+  accountRole=profileResult.data.role==="admin"?"admin":"customer";
+ }else accountRole=null;
  favorites=(favoriteResult.data||[]).map(row=>row.product_id);
  accountOrders=(orderResult.data||[]).map(order=>({
   id:order.id,status:order.status,total:Number(order.total),createdAt:order.created_at,
@@ -68,7 +72,7 @@ async function initializeAccount(){
   if(event==="PASSWORD_RECOVERY"){accountMode="reset";location.hash="#/compte"}
   Promise.resolve().then(async()=>{
    if(currentUser)await loadAccountData();
-   else{accountOrders=[];accountReady=true}
+   else{accountOrders=[];accountRole=null;accountReady=true}
    accountReady=true;
    if(location.hash==="#/compte"||location.hash==="#/profil"||location.hash==="#/commandes"||location.hash==="#/favoris")draw(true);
   });
@@ -77,6 +81,7 @@ async function initializeAccount(){
  if(error){reportAccountError(error,"Lecture de la session impossible");return}
  currentUser=data.session?.user||null;
  if(currentUser)await loadAccountData();
+ else accountRole=null;
  accountReady=true;draw(true);
 }
 function authMessage(error){
@@ -128,7 +133,7 @@ async function sendPasswordReset(event){
 async function signOut(){
  const {error}=await supabaseClient.auth.signOut();
  if(error){reportAccountError(error,"Déconnexion impossible");return}
- currentUser=null;accountOrders=[];accountReady=true;accountMode="login";toast("Déconnexion effectuée.");location.hash="#/compte";
+ currentUser=null;accountOrders=[];accountRole=null;accountReady=true;accountMode="login";toast("Déconnexion effectuée.");location.hash="#/compte";
 }
 function toast(message){const el=$("toast");if(!el)return;el.textContent=message;el.classList.add("show");clearTimeout(window.__toast);window.__toast=setTimeout(()=>el.classList.remove("show"),2200)}
 function toggleTheme(){theme=theme=="dark"?"light":theme=="light"?"":"dark";try{localStorage.setItem("apextheme",theme)}catch(e){};applyTheme()}
@@ -187,12 +192,12 @@ function addPaymentRow(){
  row.innerHTML='<label class="f">Moyen<input name="payName" maxlength="40" required></label><label class="f">Numéro / identifiant<input name="payNumber" maxlength="60" required></label><button class="btn l" type="button" aria-label="Supprimer ce moyen de paiement" onclick="this.closest(\'.admin-pay-row\').remove()">Supprimer</button>';
  list.appendChild(row);
 }
-function exitAdmin(){admin=false;try{localStorage.setItem("apexadm","0")}catch(e){}location.hash="#/";}
+function exitAdmin(){location.hash="#/";}
 const items=()=>Object.values(cart);
 const count=()=>items().reduce((s,i)=>s+i.q,0);
 const total=()=>items().reduce((s,i)=>s+i.q*i.p,0);
 const style=c=>`style="--c1:${c[0]};--c2:${c[1]}"`;
-const PAGES=[["","Accueil"],["boutique","Boutique"],["commander","Comment commander"],["paiement","Paiement"],["pourquoi","Pourquoi nous"],["apropos","Qui sommes-nous"],["faq","FAQ"],["commandes","Mes commandes"],["profil","Mon profil"],["compte",currentUser?"Mon compte":"Connexion"]];
+const PAGES=[["","Accueil"],["boutique","Boutique"],["commander","Comment commander"],["paiement","Paiement"],["pourquoi","Pourquoi nous"],["apropos","Qui sommes-nous"],["faq","FAQ"],["commandes","Mes commandes"],["profil","Mon profil"]];
 const REVIEWS=[];
 const PRODUCT_INFO={
  psn:{about:"Recharge ton compte PlayStation avec une carte adaptée à sa région.",activation:"PlayStation Store",tip:"Vérifie le pays de ton compte avant de choisir une carte."},
@@ -271,7 +276,7 @@ const steps=`<ol class="st"><li><h3>Choisis ta carte</h3><p>Produit, région ou 
 const accountPage=()=>{
  if(!supabaseClient)return head("Compte client","La connexion au service de comptes n'est pas configurée.")+`<section class="sec"><div class="w"><div class="empty"><h2>Configuration Supabase requise</h2><p>Vérifie l'URL et la clé publique Supabase dans supabase-config.js.</p></div></div></section>`;
  if(currentUser&&!accountReady)return head("Mon compte","Chargement de tes données…")+`<section class="sec"><div class="w profile-box">Connexion à ton compte…</div></section>`;
- if(currentUser)return head("Mon compte","Ton compte est connecté et tes informations sont synchronisées.")+`<section class="sec"><div class="w profile-box account-box"><p><b>${escapeHtml(currentUser.email||"")}</b></p><p class="admin-note">Tes commandes et favoris sont associés à ce compte.</p><div class="account-actions"><a class="btn d" href="#/profil">Modifier mon profil</a><a class="btn l" href="#/commandes">Mes commandes</a><button class="btn l" type="button" onclick="signOut()">Se déconnecter</button></div></div></section>`;
+ if(currentUser)return head("Mon compte","Ton compte est connecté et tes informations sont synchronisées.")+`<section class="sec"><div class="w profile-box account-box"><p><b>${escapeHtml(currentUser.email||"")}</b></p><p class="account-role ${isAdmin()?"admin":""}">Rôle : ${isAdmin()?"Administrateur":"Client"}</p><p class="admin-note">Tes commandes et favoris sont associés à ce compte.</p><div class="account-actions"><a class="btn d" href="#/profil">Modifier mon profil</a><a class="btn l" href="#/commandes">Mes commandes</a><button class="btn l" type="button" onclick="signOut()">Se déconnecter</button></div></div></section>`;
  if(accountMode==="forgot")return head("Réinitialiser le mot de passe","Nous t'enverrons un lien si un compte correspond à cette adresse.")+`<section class="sec"><div class="w profile-box account-box"><form class="account-form" onsubmit="sendPasswordReset(event)"><label class="f">Adresse e-mail<input name="email" type="email" autocomplete="email" required></label><button class="btn d" type="submit">Envoyer le lien</button></form><button class="text-button" type="button" onclick="accountMode='login';draw()">Retour à la connexion</button></div></section>`;
  if(accountMode==="reset")return head("Choisir un nouveau mot de passe","Choisis un mot de passe d'au moins 8 caractères.")+`<section class="sec"><div class="w profile-box account-box"><form class="account-form" onsubmit="submitAuth(event)"><label class="f">Nouveau mot de passe<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><button class="btn d" type="submit">Modifier le mot de passe</button></form></div></section>`;
  const signup=accountMode==="signup";
@@ -344,7 +349,6 @@ apropos:()=>head("Qui sommes-nous","Apex Gaming, boutique de cartes cadeaux num�
 <h2>Nous contacter</h2><p>WhatsApp : <a href="https://wa.me/${S.wa}" target="_blank" rel="noopener"><b>${S.phone}</b></a><br>Instagram : <b>${S.ig}</b><br>Snapchat : <b>${S.sn}</b></p></div></section>`,
 
 admin:()=>{
- admin=true;try{localStorage.setItem("apexadm","1")}catch(e){}
  return head("Administration","Gère les produits, les prix et les moyens de paiement de cette boutique.")+`<section class="sec"><div class="w">
   <div class="admin-summary"><div><b>${P.filter(p=>!p.disabled).length}</b><span>produits actifs</span></div><div><b>${Math.round(S.margin*100)} %</b><span>marge appliquée</span></div><div><b>${S.pay.length}</b><span>moyens de paiement</span></div><div><b>${orders.length}</b><span>commandes locales</span></div></div>
   <section class="admin-section admin-stats"><h2>Statistiques</h2><div class="stats-grid"><div><b>${m(orders.filter(o=>o.status!=="Annulée").reduce((sum,o)=>sum+Number(o.total||0),0))}</b><span>chiffre d'affaires local</span></div><div><b>${orders.filter(o=>o.status==="En attente de confirmation").length}</b><span>à confirmer</span></div><div><b>${orders.filter(o=>o.status==="Livrée").length}</b><span>livrées</span></div><div><b>${orders.length?m(orders.reduce((sum,o)=>sum+Number(o.total||0),0)/orders.length):"0 $"}</b><span>panier moyen</span></div></div><p class="admin-note">Ces statistiques utilisent uniquement les commandes enregistrées dans ce navigateur.</p></section>
@@ -364,9 +368,13 @@ admin:()=>{
 /* ===== AFFICHAGE ET NAVIGATION ===== */
 function draw(keep){
  const y=scrollY,h=location.hash.replace(/^#\/?/,"").split("/"),a=h[0];
- $("main").innerHTML=(R[a]||R[""])(h[1],h[2]);
+ $("main").innerHTML=a==="admin"&&!isAdmin()
+  ?head("Accès réservé","Connecte-toi avec un compte administrateur pour ouvrir cette page.")+`<section class="sec"><div class="w"><div class="empty"><h2>Accès administrateur requis</h2><p>Le rôle est vérifié depuis le profil Supabase connecté.</p><a class="btn d" href="#/compte">Ouvrir mon compte</a></div></div></section>`
+  :(R[a]||R[""])(h[1],h[2]);
  const n=count();
- $("nav").innerHTML=PAGES.map(p=>`<a href="#/${p[0]}" ${p[0]==a||(a=="p"&&p[0]=="boutique")?'class="on"':""}>${p[1]}</a>`).join("")+`<a href="#/favoris" class="${a=="favoris"?"on":""}">Favoris (${favorites.length})</a><a href="#/panier" class="${a=="panier"?"on":""}">Panier (${n})</a>`+(admin?`<a href="#/admin" class="${a=="admin"?"on":""}">Administration</a>`:"");
+ const navPages=[...PAGES,["compte",currentUser?"Mon compte":"Connexion"]];
+ if(isAdmin())navPages.push(["admin","Administration"]);
+ $("nav").innerHTML=navPages.map(p=>`<a href="#/${p[0]}" ${p[0]==a||(a=="p"&&p[0]=="boutique")?'class="on"':""}>${p[1]}</a>`).join("")+`<a href="#/favoris" class="${a=="favoris"?"on":""}">Favoris (${favorites.length})</a><a href="#/panier" class="${a=="panier"?"on":""}">Panier (${n})</a>`;
  const old=document.getElementById("cb");if(old)old.remove();
  if(n&&a!="panier"){const b=document.createElement("div");b.className="bar";b.id="cb";b.innerHTML=`<span><b>${n}</b> article${n>1?"s":""} · <b>${m(total())}</b></span><a class="btn d" href="#/panier">Voir le panier</a>`;document.body.appendChild(b)}
  applyTheme();
